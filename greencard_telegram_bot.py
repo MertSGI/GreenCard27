@@ -486,13 +486,21 @@ def answer_user_question(question: str, profile: Dict[str, Any], force_web: bool
             HAS_GENAI, bool(GEMINI_API_KEY),
         )
 
+    # Arama sonuçları varsa Gemini devre dışıyken eski, sabit tarihli
+    # yanıtları kaynaklarla birleştirip güncel bilgi gibi göstermeyelim.
+    if web_result.sources:
+        return (
+            "🔎 Gemini şu an yanıt oluşturamadı. Aşağıdaki sonuçlar "
+            "internette bulundu; gerçek tarihleri ve resmî kararı "
+            "bağlantılardan ayrıca doğrula.\n\n"
+            + evidence[:1700] + links
+        )
+
     def offline_answer(message: str) -> str:
         return (
             "⚠️ _Gemini AI yanıtı alınamadı. Aşağıdaki içerik yerleşik "
             "rehberden geliyor; güncel resmî bilgi olarak doğrulanmış değildir._\n\n"
-            + (evidence[:900] + "\n\n" if web_result.sources else "")
-            + message
-            + links
+            + message + links
         )
 
     # Yerleşik (Fallback) Uzman Yanıt Motoru
