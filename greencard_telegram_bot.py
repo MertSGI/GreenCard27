@@ -116,46 +116,16 @@ TZ_TR = timezone(timedelta(hours=3))
 # Kritik DV-2027 Takvim Kilometre Taşları
 MILESTONES = [
     {
-        "id": "announcement_deadline",
+        "id": "court_announcement_target",
         "date": "2026-10-29",
-        "title": "Bakanlık Resmi DV-2027 Duyuru Son Günü",
-        "desc": "Federal mahkeme kararına göre ABD Dışişleri Bakanlığı en geç 29 Ekim 2026 gece yarısına kadar resmi takvimi ve uygun ülkeleri ilan etmeli.",
+        "title": "Mahkeme hedefi: Resmî duyuruyu kontrol et",
+        "desc": "Mahkemenin belirlediği hedef ayrı; Bakanlık ilanı ve gerçek kayıt açılışı ayrı. Resmî kaynakla teyit et.",
     },
     {
-        "id": "photo_passport_ready",
-        "date": "2026-10-30",
-        "title": "Fotoğraf ve Pasaport Taraması Son Hazırlık Günü",
-        "desc": "600x600 px (<240 KB) biyometrik fotoğrafınız ve <5 MB JPEG pasaport kimlik/imza sayfası taramanız hazır ve kontrol edilmiş olmalı.",
-    },
-    {
-        "id": "registration_open",
-        "date": "2026-11-01",
-        "title": "DV-2027 Başvurularının Açılması",
-        "desc": "Mahkeme emrine göre başvurular en geç 1 Kasım 2026'da dvprogram.state.gov üzerinden açılacak ve 30 gün sürecek.",
-    },
-    {
-        "id": "november_preprep",
-        "date": "2026-11-15",
-        "title": "Dar Takvim Ön-Hazırlığı: DS-260 ve Resmi Belgeler",
-        "desc": "Sonuçlar 3 Aralık'ta açıklanacağı için Kasım ortasına kadar e-Devlet adres/SGK dökümleri, Formül A/B ve aşı kontrolleri tamamlanmalı.",
-    },
-    {
-        "id": "registration_close",
-        "date": "2026-12-01",
-        "title": "DV-2027 Başvurularının Kapanışı (30. Gün)",
-        "desc": "30 günlük başvuru penceresinin sonu. Başvurunuzu tamamlamış ve Confirmation Number'ı bota kaydetmiş olmalısınız.",
-    },
-    {
-        "id": "results_announcement",
-        "date": "2026-12-03",
-        "title": "DV-2027 Çekiliş Sonuçlarının Açıklanması",
-        "desc": "Mahkeme kararına göre seçilenler en geç 3 Aralık 2026'da Entrant Status Check üzerinden duyurulacak. Kazananlar hemen DS-260 göndermeli!",
-    },
-    {
-        "id": "visa_issuance_deadline",
+        "id": "fiscal_year_end",
         "date": "2027-09-30",
-        "title": "DV-2027 Vize Basımı Kesin Son Günü",
-        "desc": "2027 ABD Mali Yılı sonu. Seçilenlerin DS-260, sağlık muayenesi ve mülakat süreçleri bu tarihe kadar tamamlanmak zorunda (<10 ay süre).",
+        "title": "DV-2027 mali yılının sonu",
+        "desc": "Mali yılın bitişi resmîdir; vize düzenleme durdurma kararları ve güncel uygulamayı ayrıca kontrol et.",
     },
 ]
 
@@ -192,41 +162,36 @@ DS260_FIELDS = [
 # 5 Fazlı Hızlandırılmış Hazırlık Rehberi (Dar Takvim Stratejisi)
 PHASES_GUIDE = {
     "phase1": (
-        "🚀 *FAZ 1: Kusursuz İlk Başvuru (26 Ekim – 1 Kasım 2026)*\n\n"
-        "Hareket alanımız dar olduğu için ilk başvuruda sıfır hata yapmalıyız:\n"
-        "• *Zorunlu Pasaport Taraması:* Pasaportunuzun fotoğraflı kimlik ve imza sayfasını PDF değil, *JPEG/JFIF* formatında ve *5 MB altında* taratın.\n"
-        "• *Biyometrik Fotoğraf:* Son 6 ay içinde çekilmiş, *600x600 piksel*, maksimum *240 KB*, gözlüksüz ve düz beyaz/açık arka planlı olmalı. Eski vize veya geçen yılın fotoğrafını kullanırsanız sistem otomatik eler.\n"
-        "• *1 Dolar Kayıt Ücreti:* Başvuru anında resmi devlet portalında $1 ödenecek; kartınızın 3D Secure / yurtdışı internet alışverişine açık olduğundan emin olun.\n"
-        "• *Eş Stratejisi:* Evliyseniz ve eşiniz de şartları sağlıyorsa iki ayrı başvuru yaparak kazanma şansınızı *2 katına* çıkarın."
+        "🚀 *FAZ 1: Resmî başvuruya hazırlan*\n\n"
+        "Başvuru döneminin açıldığını varsayma. ABD Dışişleri Bakanlığının güncel "
+        "DV duyurularını ve güncel fotoğraf, uygunluk, pasaport şartlarını kontrol et.\n"
+        "Resmî kaynak: https://travel.state.gov/content/travel/en/us-visas/immigrate/diversity-visa-program-entry.html"
     ),
     "phase2": (
-        "📂 *FAZ 2: Kasım Ayında (Sonuçları Beklemeden!) DS-260 ve Evrak Hazırlığı*\n\n"
-        "Normal yıllarda sonuçlar Mayıs'ta açıklanır ve 17 ay vaktiniz olurdu. Bu yıl sonuçlar *3 Aralık 2026*'da açıklanacak ve *30 Eylül 2027*'de süreç bitecek (<10 ay). Bu yüzden Kasım ayında sonuçları beklemeden şunları hazırlayın:\n"
-        "1️⃣ *e-Devlet Tarihçeli Yerleşim Yeri Raporu:* 16 yaşınızdan bugüne kadar oturduğunuz tüm adresleri ay/yıl olarak çıkarıp `/ds260` modülüne kaydedin.\n"
-        "2️⃣ *e-Devlet SGK Hizmet Dökümü:* Son 10 yıldaki tüm iş giriş-çıkış tarihlerinizi ve işyeri unvanlarını listeleyin.\n"
-        "3️⃣ *Nüfus Müdürlüğünden Formül A ve Formül B:* Uluslararası çok dilli doğum kayıt örneği (Formül A) ve evliyseniz evlilik kayıt örneği (Formül B) alınma sürecini öğrenin.\n"
-        "4️⃣ *Adli Sicil Kaydı:* 16 yaşından beri 6 aydan fazla yaşadığınız başka bir ülke varsa oradan polis belgesi (Police Certificate) almak haftalar sürer; şimdiden başvurun!"
+        "📂 *FAZ 2: Belgelerini düzenle*\n\n"
+        "Kimlik, eğitim ve çalışma geçmişini eksiksiz toparla. Fotoğrafın güncelliğini "
+        "doğrula. /ds260 yalnızca hazırlık simülatörüdür; seçilmeden resmî DS-260 "
+        "gönderilmiş sayılmaz."
     ),
     "phase3": (
-        "⚡ *FAZ 3: 3 Aralık Sonuç Günü, Case Number ve Konsolosluk/AOS Stratejisi*\n\n"
-        "• *İlk 48 Saat Kuralı:* 3 Aralık 2026'da `You have been selected` yazısını görür görmez, önceden `/ds260` simülatöründe hazırladığımız verilerle CEAC üzerinden DS-260 formunu ilk 48 saat içinde hatasız gönderin.\n"
-        "• *Case Number (Dosya Numarası) Analizi:* Numaranız `2027EU0000XXXX` formatında olacak. Dar takvim nedeniyle KCC (Kentucky Consular Center) DS-260 formunu işleme sırasına göre mülakat dağıtır; formu erken göndermek hayati önem taşır.\n"
-        "• *Alternatif Konsolosluk / AOS Planı:* Eğer ABD'de yasal statüdeyseniz (F-1, B1/B2, H-1B vb.) USCIS üzerinden *Adjustment of Status (I-485)* veya İstanbul/Ankara yoğunluğuna göre dosyanızı aktif başka bir konsolosluğa taşıma opsiyonunu değerlendireceğiz."
+        "⚡ *FAZ 3: Sonuç kontrolü ve seçilme sonrası*\n\n"
+        "Seçilip seçilmediğini yalnız Entrant Status Check üzerinden kontrol et. "
+        "Seçilmek vize garantisi değildir. Case number, DS-260 ve Visa Bulletin "
+        "adımlarını açıklanan resmî talimatlara göre planla.\n"
+        "Resmî portal: https://dvprogram.state.gov/"
     ),
     "phase4": (
-        "🩺 *FAZ 4: Sağlık Muayenesi (Aşılar) ve Finansal (Public Charge) Kalkanı*\n\n"
-        "Mülakatta ret veya 'Administrative Processing' (İdari İşlem) almamak için iki kritik hazırlık:\n"
-        "1️⃣ *Aşı ve Antikor Hazırlığı:* Yetkili göçmen doktoru muayenesinde *Tetanoz (Tdap), MMR (Kızamık-Kızamıkçık-Kabakulak), Hepatit B, Suçiçeği (Varicella)* ve mevsimsel grip/polio aşıları istenir. Aşı kartınız yoksa aile hekiminizde *Antikor (Titrasyon) Testi* yaptırarak bağışıklığınızı şimdiden belgeleyin.\n"
-        "2️⃣ *Public Charge (Kamu Yükü Olmama) Kanıtı:* 2026'da sıkılaştırılan Public Charge eğitimleri nedeniyle konsolosluk memuru ABD'de kendi ayaklarınız üzerinde durabileceğinizi görmek ister:\n"
-        "   • Kişi başı en az *$10.000 – $15.000* (aile için $20.000+) vadeli/vadesiz banka bakiyesi,\n"
-        "   • Varsa tapu/araç ruhsatı, İngilizce CV, LinkedIn profili veya ABD'den iş görüşmesi/teklifi yazışmaları,\n"
-        "   • Gerekirse ABD'de yaşayan bir yakınınızdan *Form I-134 (Affidavit of Support)*."
+        "🩺 *FAZ 4: Sağlık ve finans hazırlığı*\n\n"
+        "Yetkili sağlık muayenesi, aşı kayıtları ve gerekiyorsa finansal belgeleri "
+        "kişisel durumuna göre hazırla. Her kişi için zorunlu sabit banka bakiyesi "
+        "veya evrensel aşı listesi olduğunu varsayma."
     ),
     "phase5": (
-        "🎯 *FAZ 5: Konsolosluk Mülakatı ve ABD'ye İlk Giriş Planı*\n\n"
-        "• *Mülakat Provası:* Mülakat ortalama 3-5 dakika sürer ancak DS-260 formunuzdaki bilgilerle verdiğiniz sözlü yanıtların %100 tutarlı olması gerekir. Botta `/mulakat` komutuyla benimle canlı prova yapabilirsiniz.\n"
-        "• *Vize Onayı Sonrası:* Vizeniz basıldıktan sonra maksimum 6 ay içinde (ve her halükarda 30 Eylül 2027'den önce) ABD'ye giriş yapmalısınız.\n"
-        "• *USCIS Immigrant Fee ($235):* Vizeyi aldıktan sonra ABD'ye uçmadan önce kişi başı $235 kart basım ücretini online ödeyin ki fiziksel Green Card'ınız ABD'ye ayak bastıktan sonra 2-4 hafta içinde adresinize gelsin."
+        "🎯 *FAZ 5: Konsolosluk mülakatı ve vize kararı*\n\n"
+        "Mülakat yeri, tarihi, gerekli belgeler ve ücretler için güncel resmî "
+        "talimatları esas al. Mülakat öncesinde DV issuance durdurma kararlarının "
+        "güncel durumunu ayrıca doğrula.\n"
+        "https://travel.state.gov/en/newsroom/visas/2025/diversity-visa-issuance-updated-guidance.html"
     ),
 }
 
@@ -578,7 +543,7 @@ def build_phases_keyboard() -> InlineKeyboardMarkup:
         [
             [InlineKeyboardButton("🚀 Faz 1: Kusursuz Başvuru (Ekim-Kasım)", callback_data="phase:phase1")],
             [InlineKeyboardButton("📂 Faz 2: Kasım'da DS-260 & Evrak Ön-Hazırlığı", callback_data="phase:phase2")],
-            [InlineKeyboardButton("⚡ Faz 3: 3 Aralık Sonuç & Case Number Stratejisi", callback_data="phase:phase3")],
+            [InlineKeyboardButton("⚡ Faz 3: Sonuçlar ve Case Number", callback_data="phase:phase3")],
             [InlineKeyboardButton("🩺 Faz 4: Aşı/Sağlık & Public Charge (Finans)", callback_data="phase:phase4")],
             [InlineKeyboardButton("🎯 Faz 5: Konsolosluk Mülakatı & ABD Girişi", callback_data="phase:phase5")],
             [InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")],
@@ -724,6 +689,11 @@ async def on_bot_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> No
         )
     else:
         logger.error("Telegram işlem hatası: %s", type(err).__name__)
+        if isinstance(update, Update) and update.effective_chat:
+            try:
+                await context.bot.send_message(chat_id=update.effective_chat.id, text="⚠️ Bir işlem hatası oluştu. /bugun veya /start ile yeniden dene.")
+            except Exception:
+                pass
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -737,11 +707,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"🤖 *AI Koçluk Motoru:* {ai_badge}\n\n"
         "Resmî duyuruları ve mahkeme hedeflerini ayrı izlerken "
         "hazırlıklarını adım adım planlayacağız:\n"
-        "• 📡 *Saatlik Tarama & Günlük Koçluk:* Resmi siteyi her saat tarar, her sabah o günkü hazırlık görevinizi hatırlatırım.\n"
-        "• 🧭 *5 Fazlı Hızlandırılmış Rehber (`/rehber`):* Başvurudan e-Devlet/Formül A-B belgelerine, aşı ve banka (Public Charge) hazırlığına kadar tüm strateji.\n"
+        "• 📡 *Kaynak Tarama & Günlük Koçluk:* Güncel haber başlıklarını izler, sabah kişisel yapılacakları bildiririm.\n"
+        "• 🧭 *5 Fazlı Hazırlık Rehberi (`/rehber`):* Başvuru, evrak, mülakat ve vize adımlarını planla.\n"
         "• 🎯 *Canlı Mülakat Provası (`/mulakat`):* Vize memuru rolünde size soru sorup cevaplarınızı analiz ederim.\n"
         "• 📸 *Dosya Denetimi:* Fotoğraf ve pasaport taramanızı *Dosya* olarak gönderin, anında test edeyim.\n\n"
         "🌐 *Web araması:* `/ara DV-2027 son duyurular`\n\n"
+        "📅 *Bugünkü kişisel plan:* `/bugun` — *Test bildirimi:* `/bildirim_test`\n\n"
         "👇 *Aşağıdaki menüden seçin veya merak ettiğiniz her şeyi doğrudan mesaj olarak yazın:*"
     )
     await update.message.reply_text(

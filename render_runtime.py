@@ -50,6 +50,7 @@ class BotWebhookRuntime:
             "webhook_registered": self.ready,
             "updates_received": self.updates_received,
             "last_update_utc": self.last_update_utc,
+            "deployed_sha": os.getenv("RENDER_GIT_COMMIT", ""),
             "checked_at_utc": datetime.now(timezone.utc).isoformat(),
         }
 
