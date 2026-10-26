@@ -103,6 +103,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 # Ortam Değişkenleri
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
 PORT = int(os.getenv("PORT", "8080"))
 DATA_FILE = Path(os.getenv("STATE_FILE_PATH", "greencard_user_state.json"))
 CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "3600"))  # 1 saat
@@ -448,7 +449,7 @@ def answer_user_question(question: str, profile: Dict[str, Any]) -> str:
                 "Lütfen soruyu en güncel verilerle yanıtla ve yanıtın sonunda kullanıcının eksik olduğu bir sonraki hazırlık adımını hatırlat."
             )
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=GEMINI_MODEL,
                 contents=prompt,
                 config=genai_types.GenerateContentConfig(
                     system_instruction=SYSTEM_KNOWLEDGE_PROMPT,
@@ -536,7 +537,7 @@ def evaluate_interview_answer(question: str, user_answer: str, next_q: Optional[
                 "2. Bu cevabın mülakatta söylenebilecek en ideal, net ve güven veren versiyonu."
             )
             resp = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=GEMINI_MODEL,
                 contents=prompt,
                 config=genai_types.GenerateContentConfig(temperature=0.3),
             )
@@ -658,10 +659,10 @@ async def cmd_ai_durum(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     def probe_gemini() -> bool:
         client = genai.Client(api_key=GEMINI_API_KEY)
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=GEMINI_MODEL,
             contents="Sadece OK yaz.",
             config=genai_types.GenerateContentConfig(
-                temperature=0, max_output_tokens=20,
+                temperature=0,
             ),
         )
         return bool(response and response.text and response.text.strip())
@@ -683,9 +684,27 @@ async def cmd_ai_durum(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "Gemini bağlantı testi başarısız: hata_tipi=%s durum_kodu=%s",
             type(exc).__name__, getattr(exc, "code", "bilinmiyor"),
         )
+        code = getattr(exc, "code", None)
+        try:
+            status_code = int(code)
+        except (TypeError, ValueError):
+            status_code = None
+        reasons = {
+            400: "İstek veya API anahtarı hatası; Google AI Studio ayarlarını kontrol edin.",
+            401: "API anahtarı doğrulanmadı.",
+            403: "API anahtarında yetki veya bölge kısıtı olabilir.",
+            404: "Model bulunamadı. GEMINI_MODEL değerini kontrol edin.",
+            429: "Google AI kota veya hız sınırı dolmuş olabilir.",
+            500: "Google geçici sunucu hatası.",
+            503: "Google modeli geçici olarak meşgul.",
+        }
+        reason = reasons.get(status_code, "Render loglarındaki hata tipini kontrol edin.")
         await check_message.edit_text(
-            "🔴 Gemini bağlantı testi başarısız. Render loglarında "
-            "hata tipini ve durum kodunu kontrol edin."
+            f"🔴 Gemini API bağlantı hatası\n"
+            f"Model: {GEMINI_MODEL}\n"
+            f"Hata: {type(exc).__name__}\n"
+            f"Kod: {status_code if status_code is not None else 'bilinmiyor'}\n"
+            f"Öneri: {reason}"
         )
 
 
@@ -1290,9 +1309,6 @@ def main() -> None:
         logger.info("Tek seferlik cron taraması tamamlandı.")
         return
 
-    # 7/24 Ücretsiz Bulut Hosting (Render / Koyeb / HF Spaces) için Health-Check Sunucusunu Başlat
-    start_health_server()
-
     # Komutlar
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("ai_durum", cmd_ai_durum))
@@ -1321,8 +1337,10 @@ def main() -> None:
         )
         logger.info("Otomatik bulut tarama aktif (Her %s saniyede bir).", CHECK_INTERVAL_SECONDS)
 
-    logger.info("Green Card 360° Bulut Koçu 7/24 dinlemede...")
-    app.run_polling()
+    # Render HTTP hizmeti ve Telegram webhook tek süreçte yönetilir.
+    from render_runtime import run_render_webhook
+    logger.info("Green Card 360° Bulut Koçu webhook modunda başlatılıyor...")
+    run_render_webhook(app, bot_token=BOT_TOKEN, port=PORT)
 
 
 if __name__ == "__main__":
