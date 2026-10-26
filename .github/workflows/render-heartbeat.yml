@@ -13,24 +13,29 @@ permissions:
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 7
     steps:
       - name: Wake Render and verify Telegram webhook
         run: |
           python - <<'PY'
           import json, time, urllib.request
           url="https://greencard27.onrender.com/health"
-          for attempt in range(3):
+          for attempt in range(7):
               try:
                   with urllib.request.urlopen(url,timeout=100) as result:
                       data=json.loads(result.read(6000).decode("utf-8"))
                       assert data.get("telegram_transport")=="webhook",data
                       assert data.get("status")=="ok",data
-                      print("RENDER_HEALTH=PASS",data)
+                      deployed=data.get("deployed_sha","")
+                      expected="c059bf9827ef1dc8b38c51fc9a4e27778d682239"
+                      print("RENDER_DEPLOYED_SHA",deployed or "NOT_REPORTED")
+                      if not deployed or deployed!=expected:
+                          raise RuntimeError("Render has not deployed last verified source SHA yet")
+                      print("RENDER_EXACT_SHA_HEALTH=PASS",data)
                       break
               except Exception as exc:
                   print("RENDER_HEALTH=RETRY",attempt+1,type(exc).__name__)
-                  if attempt==2:
+                  if attempt==6:
                       raise
-                  time.sleep(12)
+                  time.sleep(20)
           PY
