@@ -71,6 +71,7 @@ from telegram import (
     Document,
 )
 from telegram.constants import ParseMode
+from telegram.error import BadRequest, Conflict
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -95,10 +96,13 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger("GreenCardCloudCoach")
+# httpx INFO logları Telegram tokenını istek URL'sinde gösterebilir.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # Ortam Değişkenleri
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 PORT = int(os.getenv("PORT", "8080"))
 DATA_FILE = Path(os.getenv("STATE_FILE_PATH", "greencard_user_state.json"))
 CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "3600"))  # 1 saat
@@ -453,14 +457,32 @@ def answer_user_question(question: str, profile: Dict[str, Any]) -> str:
                 ),
             )
             if response and response.text:
+                logger.info("Gemini AI yanıtı başarıyla alındı.")
                 return response.text
+            logger.warning("Gemini API boş yanıt döndürdü; yerleşik rehbere geçiliyor.")
         except Exception as exc:
-            logger.warning("Gemini API hatası, yerleşik bilgi bankasına geçiliyor: %s", exc)
+            logger.warning(
+                "Gemini API başarısız: hata_tipi=%s durum_kodu=%s",
+                type(exc).__name__,
+                getattr(exc, "code", "bilinmiyor"),
+            )
+    else:
+        logger.warning(
+            "Gemini yapılandırması eksik: sdk_yüklü=%s api_anahtarı_var=%s",
+            HAS_GENAI, bool(GEMINI_API_KEY),
+        )
+
+    def offline_answer(message: str) -> str:
+        return (
+            "⚠️ _Gemini AI yanıtı alınamadı. Aşağıdaki içerik yerleşik "
+            "rehberden geliyor; güncel resmî bilgi olarak doğrulanmış değildir._\n\n"
+            + message
+        )
 
     # Yerleşik (Fallback) Uzman Yanıt Motoru
     q = question.lower()
     if any(k in q for k in ["mahkeme", "dava", "temyiz", "ne oldu", "rubio"]):
-        return (
+        return offline_answer(
             "⚖️ *Mahkeme Süreci Güncel Durumu (Red Eagle Law v. Rubio)*\n\n"
             "• Kaliforniya Güney Bölgesi Federal Mahkemesi Yargıcı Jinsook Ohta, *14 Ekim 2026*'da ihtiyati tedbir kararı verdi.\n"
             "• Karara göre ABD Dışişleri Bakanlığı:\n"
@@ -470,7 +492,7 @@ def answer_user_question(question: str, profile: Dict[str, Any]) -> str:
             "• 🎯 *Süreç Yöneticisi Notu:* Hükümet temyize gitse bile başvuru penceresi açıldığında anında başvurabilecek şekilde 30 Ekim'e kadar fotoğraf ve pasaport taramanızı hazır etmeliyiz!"
         )
     if any(k in q for k in ["pasaport", "tarama", "scan", "pdf", "5 mb"]):
-        return (
+        return offline_answer(
             "🛂 *DV-2027 Zorunlu Pasaport ve Tarama Kuralı*\n\n"
             "• 10 Nisan 2026'da yürürlüğe giren nihai kurala göre *asıl başvuru sahibi* için geçerli pasaport *zorunludur*.\n"
             "• Pasaportun *fotoğraflı kimlik ve imza sayfasının taraması* sisteme yüklenmelidir:\n"
@@ -479,7 +501,7 @@ def answer_user_question(question: str, profile: Dict[str, Any]) -> str:
             "• 💡 Pasaport taramanızı bu sohbete *Dosya (Document)* olarak gönderin, teknik uygunluğunu hemen onaylayayım!"
         )
     if any(k in q for k in ["foto", "fotoğraf", "biyometrik", "600", "gözlük", "selfie"]):
-        return (
+        return offline_answer(
             "📸 *Green Card Biyometrik Fotoğraf Kuralları*\n\n"
             "• *Boyut:* Tam olarak *600 x 600 piksel* (kare) ve maksimum *240 KB* (JPEG).\n"
             "• *Güncellik:* Son *6 ay* içinde çekilmiş olmalı.\n"
@@ -487,9 +509,9 @@ def answer_user_question(question: str, profile: Dict[str, Any]) -> str:
             "• 💡 Fotoğrafınızı bu bota *Dosya (Sıkıştırmadan)* olarak gönderin; piksel ve KB kontrolünü otomatik yapayım!"
         )
     if any(k in q for k in ["aşı", "sağlık", "muayene", "doktor", "public charge", "banka", "para", "ücret"]):
-        return PHASES_GUIDE["phase4"]
+        return offline_answer(PHASES_GUIDE["phase4"])
 
-    return (
+    return offline_answer(
         "🧭 *360° Green Card Süreç Yöneticisi*\n\n"
         "Bu yıl sonuçlar *3 Aralık 2026*'da açıklanacağı ve *30 Eylül 2027*'de süreç kapanacağı için tüm aşamalara önceden hazırlanıyoruz.\n\n"
         "Hemen incelemek için aşağıdaki modüllerden birini seçin:\n"
@@ -497,8 +519,7 @@ def answer_user_question(question: str, profile: Dict[str, Any]) -> str:
         "🔹 `/checklist` — 12 Adımlı Kişisel Hazırlık Kontrol Listeniz\n"
         "🔹 `/ds260` — İnteraktif DS-260 Bilgi Simülatörü\n"
         "🔹 `/mulakat` — Canlı Konsolosluk Mülakat Provası\n"
-        "🔹 `/durum` — Canlı Mahkeme ve Resmi Site Taraması\n\n"
-        "💡 _Not: Gemini AI canlı soru-cevap özelliğini aktif etmek için bulut kurulumunda `GEMINI_API_KEY` değişkenini tanımlamanız yeterlidir._"
+        "🔹 `/durum` — Canlı Mahkeme ve Resmi Site Taraması\n"
     )
 
 
@@ -520,8 +541,15 @@ def evaluate_interview_answer(question: str, user_answer: str, next_q: Optional[
                 config=genai_types.GenerateContentConfig(temperature=0.3),
             )
             feedback = resp.text if (resp and resp.text) else "✅ Cevabınız kaydedildi."
-        except Exception:
-            feedback = "✅ Cevabınız alındı. Mülakatta kısa, net ve DS-260 formunuzla %100 tutarlı yanıt vermeye özen gösterin."
+        except Exception as exc:
+            logger.warning(
+                "Gemini mülakat değerlendirmesi başarısız: hata_tipi=%s durum_kodu=%s",
+                type(exc).__name__, getattr(exc, "code", "bilinmiyor"),
+            )
+            feedback = (
+                "⚠️ Gemini değerlendirmesi şu anda alınamadı; genel prova önerisi: "
+                "Cevabınızı kısa, net ve DS-260 bilgilerinizle tutarlı tutun."
+            )
     else:
         feedback = (
             "💡 *Koç Değerlendirmesi:* Cevabınız net. Konsolosluk memuru karşısında göz teması kurarak, "
@@ -612,12 +640,93 @@ def build_phases_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+async def cmd_ai_durum(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Gerçek Gemini API çağrısıyla bağlantıyı doğrular; anahtarı paylaşmaz."""
+    if not HAS_GENAI:
+        await update.message.reply_text(
+            "🔴 Gemini SDK yüklenemedi. Render build loglarını kontrol edin."
+        )
+        return
+    if not GEMINI_API_KEY:
+        await update.message.reply_text(
+            "🔴 GEMINI_API_KEY tanımlı değil. Render Environment ayarını kontrol edin."
+        )
+        return
+
+    check_message = await update.message.reply_text("🔎 Gemini API bağlantısı kontrol ediliyor...")
+
+    def probe_gemini() -> bool:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents="Sadece OK yaz.",
+            config=genai_types.GenerateContentConfig(
+                temperature=0, max_output_tokens=20,
+            ),
+        )
+        return bool(response and response.text and response.text.strip())
+
+    try:
+        if await asyncio.to_thread(probe_gemini):
+            await check_message.edit_text(
+                "🟢 Gemini API bağlantısı doğrulandı; model yanıt verdi.\n"
+                "Not: Bu kontrol canlı Google Arama aracını ayrıca test etmez."
+            )
+        else:
+            logger.warning("Gemini bağlantı testi boş yanıt döndürdü.")
+            await check_message.edit_text(
+                "🟠 Gemini erişilebilir fakat model boş yanıt döndürdü. "
+                "Render loglarını kontrol edin."
+            )
+    except Exception as exc:
+        logger.warning(
+            "Gemini bağlantı testi başarısız: hata_tipi=%s durum_kodu=%s",
+            type(exc).__name__, getattr(exc, "code", "bilinmiyor"),
+        )
+        await check_message.edit_text(
+            "🔴 Gemini bağlantı testi başarısız. Render loglarında "
+            "hata tipini ve durum kodunu kontrol edin."
+        )
+
+
+async def safe_edit_response(message, answer: str, reply_markup=None) -> None:
+    """Telegram eski Markdown sözdizimi yanıtı reddederse düz metne geç."""
+    try:
+        await message.edit_text(
+            answer,
+            parse_mode=ParseMode.MARKDOWN,
+            disable_web_page_preview=True,
+            reply_markup=reply_markup,
+        )
+    except BadRequest as exc:
+        if "parse entities" not in str(exc).lower():
+            raise
+        logger.info("Telegram Markdown ayrıştırması reddedildi; düz metin gönderiliyor.")
+        await message.edit_text(
+            answer,
+            disable_web_page_preview=True,
+            reply_markup=reply_markup,
+        )
+
+
+async def on_bot_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Polling çakışmasını anlamlı logla; token içeren URL veya iz yazma."""
+    err = context.error
+    if isinstance(err, Conflict):
+        logger.warning(
+            "Telegram 409 Conflict: başka bir getUpdates işlemi aktif. "
+            "Deploy geçişi veya ikinci bot servisini kontrol edin."
+        )
+    else:
+        logger.error("Telegram işlem hatası: %s", type(err).__name__)
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     state = load_state()
     chat_id = update.effective_chat.id
     profile = get_user_profile(state, chat_id)
 
-    ai_badge = "🟢 Aktif (Gemini + Canlı Google Arama)" if (HAS_GENAI and GEMINI_API_KEY) else "🟡 Yerleşik Uzman Modu"
+    ai_badge = "🟢 Yapılandırıldı (canlı test: /ai_durum)" if (HAS_GENAI and GEMINI_API_KEY) else "🟡 Yerleşik Uzman Modu (/ai_durum ile kontrol edin)"
     welcome_text = (
         "🇺🇸 *Green Card (DV-2027) 360° Proaktif Süreç Yöneticinize Hoş Geldiniz!*\n\n"
         f"🤖 *AI Koçluk Motoru:* {ai_badge}\n\n"
@@ -1033,10 +1142,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         save_state(state)
 
         wait_msg = await update.message.reply_text("🧐 _Vize memuru cevabınızı değerlendiriyor..._", parse_mode=ParseMode.MARKDOWN)
-        eval_text = evaluate_interview_answer(current_q, text, next_q)
-        await wait_msg.edit_text(
+        eval_text = await asyncio.to_thread(evaluate_interview_answer, current_q, text, next_q)
+        await safe_edit_response(
+            wait_msg,
             eval_text,
-            parse_mode=ParseMode.MARKDOWN,
             reply_markup=build_main_menu_keyboard() if next_q is None else None,
         )
         return
@@ -1070,12 +1179,9 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     # 3. Gemini AI + Canlı Arama Destekli Soru-Cevap
     thinking_msg = await update.message.reply_text("🤖 _Süreç yöneticiniz analiz ediyor..._", parse_mode=ParseMode.MARKDOWN)
-    reply = answer_user_question(text, profile)
-    await thinking_msg.edit_text(
-        reply,
-        parse_mode=ParseMode.MARKDOWN,
-        disable_web_page_preview=True,
-        reply_markup=build_main_menu_keyboard(),
+    reply = await asyncio.to_thread(answer_user_question, text, profile)
+    await safe_edit_response(
+        thinking_msg, reply, reply_markup=build_main_menu_keyboard(),
     )
 
 
@@ -1169,14 +1275,14 @@ def main() -> None:
     args = parser.parse_args()
 
     if not BOT_TOKEN or BOT_TOKEN == "BURAYA_TELEGRAM_BOT_TOKEN_YAZIN":
-        print(
-            "⚠️ LÜTFEN TELEGRAM_BOT_TOKEN ORTAM DEĞİŞKENİNİ TANIMLAYIN!\n"
-            "Render.com / Koyeb / GitHub Secrets üzerinde:\n"
-            "  TELEGRAM_BOT_TOKEN = BotFather'dan aldığınız token\n"
-            "  GEMINI_API_KEY     = Google AI Studio'dan aldığınız ücretsiz API anahtarı"
+        raise RuntimeError(
+            "TELEGRAM_BOT_TOKEN eksik. Render Environment ayarını kontrol edin."
         )
-        return
 
+    logger.info(
+        "Gemini yapılandırması: sdk_yüklü=%s api_anahtarı_var=%s (canlı test: /ai_durum)",
+        HAS_GENAI, bool(GEMINI_API_KEY),
+    )
     app: Application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     if args.cron_once:
@@ -1189,6 +1295,7 @@ def main() -> None:
 
     # Komutlar
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("ai_durum", cmd_ai_durum))
     app.add_handler(CommandHandler("durum", cmd_durum))
     app.add_handler(CommandHandler("rehber", cmd_rehber))
     app.add_handler(CommandHandler("mulakat", cmd_mulakat))
@@ -1202,6 +1309,8 @@ def main() -> None:
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo_compressed))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+    app.add_error_handler(on_bot_error)
 
     # Periyodik saatlik kontrol (JobQueue)
     if app.job_queue:
