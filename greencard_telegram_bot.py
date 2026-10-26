@@ -108,7 +108,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
 PORT = int(os.getenv("PORT", "8080"))
 DATA_FILE = Path(os.getenv("STATE_FILE_PATH", "greencard_user_state.json"))
-CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "3600"))  # 1 saat
+CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "600"))  # 1 saat
 
 # Türkiye Saat Dilimi (UTC+3)
 TZ_TR = timezone(timedelta(hours=3))
@@ -276,32 +276,18 @@ def start_health_server() -> None:
 # ============================================================================
 
 def load_state() -> Dict[str, Any]:
-    if DATA_FILE.exists():
-        try:
-            return json.loads(DATA_FILE.read_text(encoding="utf-8"))
-        except Exception as exc:
-            logger.error("Durum dosyası okunamadı: %s", exc)
-    return {
-        "subscribers": [],
-        "seen_news_hashes": [],
-        "last_dv_portal_hash": "",
-        "last_daily_brief_date": "",
-        "users": {},
-    }
-
+    from state_store import load
+    return load(DATA_FILE)
 
 def save_state(state: Dict[str, Any]) -> None:
-    try:
-        DATA_FILE.write_text(
-            json.dumps(state, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-    except Exception as exc:
-        logger.error("Durum dosyası kaydedilemedi: %s", exc)
+    from state_store import save
+    save(DATA_FILE,state)
 
 
 def get_user_profile(state: Dict[str, Any], chat_id: int) -> Dict[str, Any]:
     uid = str(chat_id)
+    state.setdefault("users",{})
+    state.setdefault("subscribers",[])
     if uid not in state["users"]:
         state["users"][uid] = {
             "checklist": {key: False for key, _ in CHECKLIST_ITEMS},
@@ -503,47 +489,10 @@ def answer_user_question(question: str, profile: Dict[str, Any], force_web: bool
             + message + links
         )
 
-    # Yerleşik (Fallback) Uzman Yanıt Motoru
-    q = question.lower()
-    if any(k in q for k in ["mahkeme", "dava", "temyiz", "ne oldu", "rubio"]):
-        return offline_answer(
-            "⚖️ *Mahkeme Süreci Güncel Durumu (Red Eagle Law v. Rubio)*\n\n"
-            "• Kaliforniya Güney Bölgesi Federal Mahkemesi Yargıcı Jinsook Ohta, *14 Ekim 2026*'da ihtiyati tedbir kararı verdi.\n"
-            "• Karara göre ABD Dışişleri Bakanlığı:\n"
-            "  1️⃣ En geç *29 Ekim 2026*'da DV-2027 kurallarını ve ülke listesini duyuracak.\n"
-            "  2️⃣ En geç *1 Kasım 2026*'da başvuruları açıp *30 gün* boyunca kabul edecek.\n"
-            "  3️⃣ En geç *3 Aralık 2026*'da kazananları açıklayacak.\n"
-            "• 🎯 *Süreç Yöneticisi Notu:* Hükümet temyize gitse bile başvuru penceresi açıldığında anında başvurabilecek şekilde 30 Ekim'e kadar fotoğraf ve pasaport taramanızı hazır etmeliyiz!"
-        )
-    if any(k in q for k in ["pasaport", "tarama", "scan", "pdf", "5 mb"]):
-        return offline_answer(
-            "🛂 *DV-2027 Zorunlu Pasaport ve Tarama Kuralı*\n\n"
-            "• 10 Nisan 2026'da yürürlüğe giren nihai kurala göre *asıl başvuru sahibi* için geçerli pasaport *zorunludur*.\n"
-            "• Pasaportun *fotoğraflı kimlik ve imza sayfasının taraması* sisteme yüklenmelidir:\n"
-            "  ✅ Format: Yalnızca *JPEG / JFIF* (PDF kesinlikle reddedilir!)\n"
-            "  ✅ Boyut: Maksimum *5 MB*\n"
-            "• 💡 Pasaport taramanızı bu sohbete *Dosya (Document)* olarak gönderin, teknik uygunluğunu hemen onaylayayım!"
-        )
-    if any(k in q for k in ["foto", "fotoğraf", "biyometrik", "600", "gözlük", "selfie"]):
-        return offline_answer(
-            "📸 *Green Card Biyometrik Fotoğraf Kuralları*\n\n"
-            "• *Boyut:* Tam olarak *600 x 600 piksel* (kare) ve maksimum *240 KB* (JPEG).\n"
-            "• *Güncellik:* Son *6 ay* içinde çekilmiş olmalı.\n"
-            "• *Kurallar:* Düz beyaz/açık arka plan, nötr yüz ifadesi, doğrudan kameraya bakış. *Gözlük, şapka, küpe/aksesuar ve selfie kesinlikle yasaktır.*\n"
-            "• 💡 Fotoğrafınızı bu bota *Dosya (Sıkıştırmadan)* olarak gönderin; piksel ve KB kontrolünü otomatik yapayım!"
-        )
-    if any(k in q for k in ["aşı", "sağlık", "muayene", "doktor", "public charge", "banka", "para", "ücret"]):
-        return offline_answer(PHASES_GUIDE["phase4"])
-
     return offline_answer(
-        "🧭 *360° Green Card Süreç Yöneticisi*\n\n"
-        "Bu yıl sonuçlar *3 Aralık 2026*'da açıklanacağı ve *30 Eylül 2027*'de süreç kapanacağı için tüm aşamalara önceden hazırlanıyoruz.\n\n"
-        "Hemen incelemek için aşağıdaki modüllerden birini seçin:\n"
-        "🔹 `/rehber` — 5 Fazlı Hızlandırılmış Hazırlık Stratejisi\n"
-        "🔹 `/checklist` — 12 Adımlı Kişisel Hazırlık Kontrol Listeniz\n"
-        "🔹 `/ds260` — İnteraktif DS-260 Bilgi Simülatörü\n"
-        "🔹 `/mulakat` — Canlı Konsolosluk Mülakat Provası\n"
-        "🔹 `/durum` — Canlı Mahkeme ve Resmi Site Taraması\n"
+        "Güncel gelişmeyi doğrulayamadım. Eski sabit tarihleri kesin ilan gibi aktarmayacağım.\n"
+        "Resmî duyurular: https://travel.state.gov/en/newsroom/visas/2025/changes-to-2027-dv-program-entry-period.html\n"
+        "Bugün kişisel planın için /bugun ve /checklist kullanabilirsin."
     )
 
 
@@ -592,36 +541,9 @@ def evaluate_interview_answer(question: str, user_answer: str, next_q: Optional[
 # PROAKTİF GÜNLÜK KOÇLUK MESAJI ÜRETİCİSİ
 # ============================================================================
 
-def generate_daily_coaching_brief(profile: Dict[str, Any]) -> str:
-    today = datetime.now(TZ_TR).date()
-    chk = profile.get("checklist", {})
-    next_todo = next((label for k, label in CHECKLIST_ITEMS if not chk.get(k, False)), None)
-    ds260 = profile.get("ds260", {})
-    next_ds260 = next((label for k, label in DS260_FIELDS if not ds260.get(k, "").strip()), None)
-
-    reg_open_days = (datetime.strptime("2026-11-01", "%Y-%m-%d").date() - today).days
-    results_days = (datetime.strptime("2026-12-03", "%Y-%m-%d").date() - today).days
-
-    lines = [
-        f"☀️ *Günaydın! Green Card Günlük Strateji & Koçluk Özeti* ({today.strftime('%d.%m.%Y')})\n",
-        f"⏳ *Kritik Geri Sayım:* Başvuru açılışına *{max(0, reg_open_days)} gün*, sonuçların açıklanmasına *{max(0, results_days)} gün* kaldı.\n",
-        "🎯 *Bugün Odaklanmanız Gereken Öncelikli Görevler:*",
-    ]
-    if next_todo:
-        lines.append(f"• *Checklist Önceliğiniz:* {next_todo} (`/checklist`)")
-    else:
-        lines.append("• 🌟 Tüm Checklist adımlarınız tamamlandı!")
-
-    if next_ds260:
-        lines.append(f"• *DS-260 Ön-Hazırlık Görevi:* `{next_ds260}` bilgisini bugün hazırlayıp kaydedin (`/ds260`).")
-    else:
-        lines.append("• 🌟 DS-260 simülasyon verileriniz tamamen hazır!")
-
-    lines.append(
-        "\n💡 *Günün Stratejik Hatırlatması:* Bu yıl 3 Aralık'ta sonuçlar açıklanıp 30 Eylül 2027'de süreç biteceği için (<10 ay), "
-        "evrak ve DS-260 hazırlığını Kasım ayında bitirenler mülakat sırasını ilk kapanlar olacak!"
-    )
-    return "\n".join(lines)
+def generate_daily_coaching_brief(profile: Dict[str, Any], headlines=None) -> str:
+    from coach_core import digest
+    return digest(profile,CHECKLIST_ITEMS,datetime.now(TZ_TR),headlines)
 
 
 # ============================================================================
@@ -661,6 +583,24 @@ def build_phases_keyboard() -> InlineKeyboardMarkup:
             [InlineKeyboardButton("🎯 Faz 5: Konsolosluk Mülakatı & ABD Girişi", callback_data="phase:phase5")],
             [InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")],
         ]
+    )
+
+
+async def cmd_bugun(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state=load_state()
+    profile=get_user_profile(state,update.effective_chat.id)
+    news=await asyncio.to_thread(fetch_latest_gc_news,2)
+    await update.message.reply_text(generate_daily_coaching_brief(profile,news),disable_web_page_preview=True)
+
+async def cmd_bildirim_test(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state=load_state()
+    profile=get_user_profile(state,update.effective_chat.id)
+    await update.message.reply_text(generate_daily_coaching_brief(profile),disable_web_page_preview=True)
+
+async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        f"Chat ID: {update.effective_chat.id}\n"
+        "Kalıcı bildirim hedefi için Render Environment bölümünde COACH_CHAT_ID olarak ekle."
     )
 
 
@@ -795,8 +735,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_text = (
         "🇺🇸 *Green Card (DV-2027) 360° Proaktif Süreç Yöneticinize Hoş Geldiniz!*\n\n"
         f"🤖 *AI Koçluk Motoru:* {ai_badge}\n\n"
-        "Bu yıl mahkeme kararıyla takvim çok sıkışık olduğu için (3 Aralık 2026 sonuçlar – 30 Eylül 2027 kapanış, *10 aydan az süre*), "
-        "sizi tüm aşamalara *sonuçlar açıklanmadan önce* hazırlıyorum:\n"
+        "Resmî duyuruları ve mahkeme hedeflerini ayrı izlerken "
+        "hazırlıklarını adım adım planlayacağız:\n"
         "• 📡 *Saatlik Tarama & Günlük Koçluk:* Resmi siteyi her saat tarar, her sabah o günkü hazırlık görevinizi hatırlatırım.\n"
         "• 🧭 *5 Fazlı Hızlandırılmış Rehber (`/rehber`):* Başvurudan e-Devlet/Formül A-B belgelerine, aşı ve banka (Public Charge) hazırlığına kadar tüm strateji.\n"
         "• 🎯 *Canlı Mülakat Provası (`/mulakat`):* Vize memuru rolünde size soru sorup cevaplarınızı analiz ederim.\n"
@@ -866,7 +806,7 @@ def build_ds260_view(profile: Dict[str, Any]) -> tuple[str, InlineKeyboardMarkup
 
     lines = [
         f"📝 *DS-5501 & DS-260 Hazırlık Simülatörü ({filled}/{total} Dolu)*\n",
-        "3 Aralık 2026'da sonuçlar açıklanır açıklanmaz DS-260 formunu ilk 48 saatte gönderebilmeniz için bilgilerinizi şimdiden buraya kaydedin:\n",
+        "Bu bir kişisel ön-hazırlık simülatörüdür; resmî DS-260 başvurusu değildir:\n",
     ]
     for key, label in DS260_FIELDS:
         val = ds260.get(key, "").strip()
@@ -896,7 +836,7 @@ async def cmd_durum(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_rehber(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "🧭 *DV-2027 Dar Takvim: 5 Fazlı Hızlandırılmış Hazırlık Rehberi*\n\n"
-        "Normalde 17 ay süren süreç bu yıl 10 aydan kısa süreceği için her fazı önceden tamamlıyoruz. İncelemek istediğiniz faza tıklayın:",
+        "Resmî ilanları ve hazırlık aşamalarını birbirinden ayıralım. İstediğin fazı seç:",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=build_phases_keyboard(),
     )
@@ -1215,7 +1155,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         save_state(state)
         await update.message.reply_text(
             f"🔐 *Confirmation Number Başarıyla Kaydedildi!* (`{text}`)\n"
-            "3 Aralık 2026'da sonuçlar açıklandığında bu numarayla sorgulama yapacağız.",
+            "Resmî sonuç ilanında Entrant Status Check üzerinden sorgulamayı kendin yapabilirsin.",
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=build_main_menu_keyboard(),
         )
@@ -1246,71 +1186,46 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 # ============================================================================
 
 async def run_monitoring_cycle(bot) -> None:
-    """Hem 7/24 bulut modunda hem de GitHub Actions (--cron-once) modunda çalışır."""
-    state = load_state()
-    subscribers: List[int] = state.get("subscribers", [])
-    if not subscribers:
-        return
-
-    alerts: List[str] = []
-
-    # 1. Resmi portal değişimi kontrolü
-    portal = check_official_dv_portal()
-    prev_hash = state.get("last_dv_portal_hash", "")
-    if portal["hash"] and prev_hash and portal["hash"] != prev_hash:
-        alerts.append(
-            f"🚨 *Resmi DV Lottery Sitesinde (dvprogram.state.gov) Değişiklik Tespit Edildi!*\n"
-            f"Durum: {portal['summary']}\n👉 [Hemen Kontrol Et]({portal['url']})"
-        )
-    if portal["hash"]:
-        state["last_dv_portal_hash"] = portal["hash"]
-
-    # 2. Yeni haber kontrolü
-    seen_hashes: List[str] = state.get("seen_news_hashes", [])
-    latest_news = fetch_latest_gc_news(max_items=5)
-    new_items = [item for item in latest_news if item["id"] not in seen_hashes]
-
-    if new_items and seen_hashes:
-        news_lines = ["📰 *Green Card Süreciyle İlgili Yeni Gelişme!*"]
-        for item in new_items[:3]:
-            news_lines.append(f"• [{item['title']}]({item['link']})")
-        alerts.append("\n".join(news_lines))
-
-    for item in latest_news:
-        if item["id"] not in seen_hashes:
-            seen_hashes.append(item["id"])
-    state["seen_news_hashes"] = seen_hashes[-100:]
-
-    # 3. Günlük Sabah Koçluk Özeti (Her gün Türkiye saatiyle 09:00'dan sonraki ilk taramada 1 kez)
-    now_tr = datetime.now(TZ_TR)
-    today_str = now_tr.strftime("%Y-%m-%d")
-    send_daily_brief = False
-    if now_tr.hour >= 9 and state.get("last_daily_brief_date") != today_str:
-        state["last_daily_brief_date"] = today_str
-        send_daily_brief = True
-
-    save_state(state)
-
-    for chat_id in subscribers:
+    """Per-user 09:00+ digest and monitored DV news, without needing Gemini."""
+    from coach_core import due,new_headlines
+    state=load_state()
+    subs=list(state.get("subscribers",[]))
+    override=os.getenv("COACH_CHAT_ID","").strip()
+    if override:
         try:
-            if alerts:
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text="\n\n".join(alerts),
-                    parse_mode=ParseMode.MARKDOWN,
-                    disable_web_page_preview=True,
-                )
-            if send_daily_brief:
-                profile = get_user_profile(state, chat_id)
-                brief = generate_daily_coaching_brief(profile)
-                await bot.send_message(
-                    chat_id=chat_id,
-                    text=brief,
-                    parse_mode=ParseMode.MARKDOWN,
-                    reply_markup=build_main_menu_keyboard(),
-                )
+            n=int(override)
+            if n not in subs:
+                subs.append(n)
+        except ValueError:
+            logger.warning("COACH_CHAT_ID değeri sayı değil.")
+    if not subs:
+        logger.info("Abone yok: Telegram /start kullanın veya COACH_CHAT_ID tanımlayın.")
+        return
+    news=await asyncio.to_thread(fetch_latest_gc_news,5)
+    seen=list(state.get("seen_news_hashes",[]))
+    changes=new_headlines(news,seen)
+    for item in news:
+        if item["id"] not in seen:
+            seen.append(item["id"])
+    state["seen_news_hashes"]=seen[-100:]
+    now=datetime.now(TZ_TR)
+    day=now.strftime("%Y-%m-%d")
+    for chat_id in subs:
+        try:
+            profile=get_user_profile(state,chat_id)
+            if changes:
+                lines=["📰 Green Card yeni bulunan haberler (resmî teyit gerekir):"]
+                for item in changes[:2]:
+                    lines.append(f"• {item['title'][:140]}\n{item['link'][:300]}")
+                await bot.send_message(chat_id=chat_id,text="\n".join(lines),disable_web_page_preview=True)
+            if due(profile,day,now.hour):
+                await bot.send_message(chat_id=chat_id,text=generate_daily_coaching_brief(profile,news),disable_web_page_preview=True)
+                profile["last_daily_digest"]=day
+                save_state(state)
+                logger.info("Sabah koçu gönderildi: chat_id=%s, gün=%s",chat_id,day)
         except Exception as exc:
-            logger.warning("Kullanıcıya (%s) bildirim gönderilemedi: %s", chat_id, exc)
+            logger.warning("Bildirim gönderimi başarısız: chat=%s error=%s",chat_id,type(exc).__name__)
+    save_state(state)
 
 
 async def periodic_monitor_job(context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1350,6 +1265,9 @@ def main() -> None:
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("ai_durum", cmd_ai_durum))
     app.add_handler(CommandHandler("ara", cmd_ara))
+    app.add_handler(CommandHandler("bugun", cmd_bugun))
+    app.add_handler(CommandHandler("bildirim_test", cmd_bildirim_test))
+    app.add_handler(CommandHandler("id", cmd_id))
     app.add_handler(CommandHandler("durum", cmd_durum))
     app.add_handler(CommandHandler("rehber", cmd_rehber))
     app.add_handler(CommandHandler("mulakat", cmd_mulakat))
@@ -1371,7 +1289,7 @@ def main() -> None:
         app.job_queue.run_repeating(
             periodic_monitor_job,
             interval=CHECK_INTERVAL_SECONDS,
-            first=15,
+            first=30,
         )
         logger.info("Otomatik bulut tarama aktif (Her %s saniyede bir).", CHECK_INTERVAL_SECONDS)
 

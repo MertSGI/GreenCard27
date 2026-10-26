@@ -1,0 +1,36 @@
+name: Render coach heartbeat
+on:
+  schedule:
+    - cron: "3,13,23,33,43,53 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/render-heartbeat.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wake Render and verify Telegram webhook
+        run: |
+          python - <<'PY'
+          import json, time, urllib.request
+          url="https://greencard27.onrender.com/health"
+          for attempt in range(3):
+              try:
+                  with urllib.request.urlopen(url,timeout=100) as result:
+                      data=json.loads(result.read(6000).decode("utf-8"))
+                      assert data.get("telegram_transport")=="webhook",data
+                      assert data.get("status")=="ok",data
+                      print("RENDER_HEALTH=PASS",data)
+                      break
+              except Exception as exc:
+                  print("RENDER_HEALTH=RETRY",attempt+1,type(exc).__name__)
+                  if attempt==2:
+                      raise
+                  time.sleep(12)
+          PY
