@@ -1,10 +1,26 @@
-GreenCard27 RUNBOOK
+# GreenCard27 RUNBOOK
 
-/start: abone ol; /id: Telegram Chat ID; /bugun: günlük kişisel adımlar; /bildirim_test: bildirimi hemen gör; /ara: web araştırması; /ai_durum: Gemini bağlantısı.
+### Temel Telegram Komutları:
+- `/start`: Botu başlatır, ana menüyü ve özellikleri tanıtır.
+- `/hafiza_temizle`: Sohbet hafızasını temizler; checklist ve DS-260 kayıtlarını korur.
+- `/bugun`: Günlük kişisel adımlar ve somut eylem planı.
+- `/bildirim_test`: Günlük koçluk bildirimini anında test eder.
+- `/ara <konu>`: Canlı web araştırması yapar (pasaport/özel veri içermez).
+- `/yorumlar [konu]`: Göçmenlik avukatları, Reddit ve forum görüşlerini analiz eder.
+- `/durum`: Resmî kaynaklar ve mahkeme durum raporu.
+- `/rehber`: 5 Fazlı Hızlandırılmış Hazırlık Rehberi.
+- `/mulakat`: 6 soruluk canlı Konsolosluk Mülakat Simülasyonu.
+- `/checklist`: 12 adımlı interaktif hazırlık kontrol listesi.
+- `/ds260`: DS-5501 / DS-260 kişisel veri hazırlık simülatörü.
+- `/fotograf`: Biyometrik fotoğraf (600x600 px, <=240 KB) ve pasaport taraması (<5 MB, JPEG) otomatik denetleyici.
+- `/ai_durum`: Canlı Gemini API bağlantısı ve model teşhisi.
+- `/id`: Telegram Chat ID'nizi gösterir.
 
-Render: TELEGRAM_BOT_TOKEN ve GEMINI_API_KEY mevcut olmalı. Sabah özetinin Render yeniden başlamasından sonra da hedefe gidebilmesi için COACH_CHAT_ID=/id çıktısı eklenmeli. DATABASE_URL verilirse bot PostgreSQL ile kalıcı kullanıcı kayıtlarını tutar. Verilmezse Render geçici diskinde checklist yeniden başlamalarda kaybolabilir.
+### Bulut ve Yerel Çalıştırma:
+- **Render.com:** `TELEGRAM_BOT_TOKEN` ve `GEMINI_API_KEY` tanımlı olmalıdır. Render ortamında `RENDER_EXTERNAL_URL` otomatik olarak algılanır ve kimlik doğrulamalı HTTPS Webhook (`/tg/...`) ile `/health` servisi çalıştırılır.
+- **Yerel Çalışma:** `RENDER_EXTERNAL_URL` bulunmadığında bot otomatik olarak güvenli Polling + dahili Health-Check sunucusu moduna geçer.
+- **Kalıcı Hafıza:** `DATABASE_URL` (PostgreSQL) tanımlanırsa tüm checklist, DS-260 ve sohbet hafızası veritabanında kalıcı tutulur. Tanımlanmazsa yerel atomik JSON (`state_store.py`) kullanılır.
+- **Sabah Özeti:** Render yeniden başlamalarında da hedefe bildirim gidebilmesi için `COACH_CHAT_ID=/id` çıktısı eklenebilir.
 
-Render servisini 10 dakikada bir uyandırma görevi kullanıcı tarafından harici ping servisiyle yürütülür. GitHub Actions zamanlanmış heartbeat kaldırılmıştır. Harici ping servisinin çalışması bağımsız takip edilmelidir; ücretsiz Render üzerinde dakika hassasiyetinde teslim garantisi yoktur. Sabah özeti 09:00 sonrası ilk uygun çalışmada bir kez gönderilir (kalıcı DB yoksa yeniden başlatma aynı gün tekrar gönderebilir). Haber başlıkları resmî karar olarak sunulmaz. Gizli tokenları paylaşmayın.
-
-
-Deployed SHA kontrolü: /health yanıtındaki deployed_sha, Render servisinin şu anda çalıştırdığı RENDER_GIT_COMMIT değeridir. GitHub commit'i ile aynı değilse deploy henüz güncel değildir.
+### Deployed SHA Kontrolü:
+`/health` yanıtındaki `deployed_sha`, Render servisinin şu anda çalıştırdığı `RENDER_GIT_COMMIT` değeridir. GitHub commit'i ile aynı değilse deploy henüz güncel değildir.
