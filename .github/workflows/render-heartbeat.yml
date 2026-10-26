@@ -18,7 +18,7 @@ jobs:
       - name: Wake Render and verify Telegram webhook
         run: |
           python - <<'PY'
-          import json, time, urllib.request
+          import json, time, urllib.request, os
           url="https://greencard27.onrender.com/health"
           for attempt in range(7):
               try:
@@ -27,7 +27,7 @@ jobs:
                       assert data.get("telegram_transport")=="webhook",data
                       assert data.get("status")=="ok",data
                       deployed=data.get("deployed_sha","")
-                      expected="c059bf9827ef1dc8b38c51fc9a4e27778d682239"
+                      expected=os.environ.get("GITHUB_SHA","")
                       print("RENDER_DEPLOYED_SHA",deployed or "NOT_REPORTED")
                       if not deployed or deployed!=expected:
                           raise RuntimeError("Render has not deployed last verified source SHA yet")
