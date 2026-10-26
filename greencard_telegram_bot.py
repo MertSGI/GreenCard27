@@ -97,8 +97,8 @@ logging.basicConfig(
 logger = logging.getLogger("GreenCardCloudCoach")
 
 # Ortam Değişkenleri
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8697742720:AAE6nQwoSZYdz1ENnRMR9auaj5LBbWUg9GQ")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AQ.Ab8RN6LZWfj4absKfCxTej1ykiYRVyC-dTap3G4ER6xgm5KBwg")
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 PORT = int(os.getenv("PORT", "8080"))
 DATA_FILE = Path(os.getenv("STATE_FILE_PATH", "greencard_user_state.json"))
 CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "3600"))  # 1 saat
