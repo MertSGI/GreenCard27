@@ -297,7 +297,7 @@ def research_web(question: str, explicit: bool = False) -> Research:
 
 def web_context(result: Research) -> str:
     if not result.sources:
-        return "Bu sorgu için arama servisleri kaynak döndürmedi."
+        return "Bu sorgu için canlı arama henüz kaynak sağlamadı."
     lines = [f"Web arama zamanı UTC: {result.checked_at}",
              "Aşağıdakiler arama sonucu özeti; tam makalenin veya yorumların tamamı okunmuş sayılmaz."]
     for i, src in enumerate(result.sources, 1):
