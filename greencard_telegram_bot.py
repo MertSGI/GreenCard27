@@ -72,6 +72,7 @@ from telegram import (
 )
 from telegram.constants import ParseMode
 from telegram.error import BadRequest, Conflict
+from gemini_runtime import generate_with_fallback, active_model, error_code
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -103,7 +104,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 # Ortam Değişkenleri
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip() or "gemini-3.5-flash-lite"
 PORT = int(os.getenv("PORT", "8080"))
 DATA_FILE = Path(os.getenv("STATE_FILE_PATH", "greencard_user_state.json"))
 CHECK_INTERVAL_SECONDS = int(os.getenv("CHECK_INTERVAL_SECONDS", "3600"))  # 1 saat
@@ -437,7 +438,7 @@ def build_user_context_summary(profile: Dict[str, Any]) -> str:
 
 
 def answer_user_question(question: str, profile: Dict[str, Any]) -> str:
-    """Kullanıcının sorusunu Gemini API (Google Search + Kişisel Bağlam) veya yerleşik motorla yanıtlar."""
+    """Kullanıcının sorusunu ücretsiz Gemini metin modeliyle veya yerleşik rehberle yanıtlar."""
     user_context = build_user_context_summary(profile)
 
     if HAS_GENAI and GEMINI_API_KEY:
@@ -446,19 +447,17 @@ def answer_user_question(question: str, profile: Dict[str, Any]) -> str:
             prompt = (
                 f"[KULLANICININ MEVCUT HAZIRLIK DURUMU]\n{user_context}\n\n"
                 f"[KULLANICININ SORUSU / MESAJI]\n{question}\n\n"
-                "Lütfen soruyu en güncel verilerle yanıtla ve yanıtın sonunda kullanıcının eksik olduğu bir sonraki hazırlık adımını hatırlat."
+                "Güncel resmî bilgileri doğrulama erişimin yoktur; kesinleşmemiş gelişmeleri kesin haber gibi aktarma. Soruyu yanıtla ve kullanıcının eksik olduğu bir sonraki hazırlık adımını hatırlat."
             )
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
+            response, used_model = generate_with_fallback(
+                client=client, preferred=GEMINI_MODEL, contents=prompt,
                 config=genai_types.GenerateContentConfig(
                     system_instruction=SYSTEM_KNOWLEDGE_PROMPT,
-                    tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
                     temperature=0.35,
                 ),
             )
             if response and response.text:
-                logger.info("Gemini AI yanıtı başarıyla alındı.")
+                logger.info("Gemini AI yanıtı başarıyla alındı: model=%s", used_model)
                 return response.text
             logger.warning("Gemini API boş yanıt döndürdü; yerleşik rehbere geçiliyor.")
         except Exception as exc:
@@ -536,9 +535,8 @@ def evaluate_interview_answer(question: str, user_answer: str, next_q: Optional[
                 "1. Güçlü yönü ve varsa riskli/eksik yönü (1-2 kısa madde)\n"
                 "2. Bu cevabın mülakatta söylenebilecek en ideal, net ve güven veren versiyonu."
             )
-            resp = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
+            resp, used_model = generate_with_fallback(
+                client=client, preferred=GEMINI_MODEL, contents=prompt,
                 config=genai_types.GenerateContentConfig(temperature=0.3),
             )
             feedback = resp.text if (resp and resp.text) else "✅ Cevabınız kaydedildi."
@@ -658,20 +656,21 @@ async def cmd_ai_durum(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     def probe_gemini() -> bool:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
+        response, selected = generate_with_fallback(
+            client=client, preferred=GEMINI_MODEL,
             contents="Sadece OK yaz.",
-            config=genai_types.GenerateContentConfig(
-                temperature=0,
-            ),
+            config=genai_types.GenerateContentConfig(temperature=0),
         )
-        return bool(response and response.text and response.text.strip())
+        return selected if response and response.text and response.text.strip() else None
 
     try:
-        if await asyncio.to_thread(probe_gemini):
+        model = await asyncio.to_thread(probe_gemini)
+        if model:
             await check_message.edit_text(
-                "🟢 Gemini API bağlantısı doğrulandı; model yanıt verdi.\n"
-                "Not: Bu kontrol canlı Google Arama aracını ayrıca test etmez."
+                f"🟢 Gemini API bağlantısı doğrulandı.\n"
+                f"Gerçekten yanıt veren model: {model}\n"
+                "Ücretsiz metin modu kullanılıyor. Google Search grounding devre dışı; "
+                "güncel kaynakları /durum komutuyla ayrıca kontrol edin."
             )
         else:
             logger.warning("Gemini bağlantı testi boş yanıt döndürdü.")
@@ -693,7 +692,7 @@ async def cmd_ai_durum(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             400: "İstek veya API anahtarı hatası; Google AI Studio ayarlarını kontrol edin.",
             401: "API anahtarı doğrulanmadı.",
             403: "API anahtarında yetki veya bölge kısıtı olabilir.",
-            404: "Model bulunamadı. GEMINI_MODEL değerini kontrol edin.",
+            404: "Bu API anahtarına açık uygun Flash modeli bulunamadı. Google AI Studio erişimini kontrol edin.",
             429: "Google AI kota veya hız sınırı dolmuş olabilir.",
             500: "Google geçici sunucu hatası.",
             503: "Google modeli geçici olarak meşgul.",
@@ -701,7 +700,7 @@ async def cmd_ai_durum(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         reason = reasons.get(status_code, "Render loglarındaki hata tipini kontrol edin.")
         await check_message.edit_text(
             f"🔴 Gemini API bağlantı hatası\n"
-            f"Model: {GEMINI_MODEL}\n"
+            f"Tercih edilen model: {GEMINI_MODEL}\n"
             f"Hata: {type(exc).__name__}\n"
             f"Kod: {status_code if status_code is not None else 'bilinmiyor'}\n"
             f"Öneri: {reason}"
@@ -745,7 +744,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.effective_chat.id
     profile = get_user_profile(state, chat_id)
 
-    ai_badge = "🟢 Yapılandırıldı (canlı test: /ai_durum)" if (HAS_GENAI and GEMINI_API_KEY) else "🟡 Yerleşik Uzman Modu (/ai_durum ile kontrol edin)"
+    ai_badge = (f"🟢 Doğrulandı ({active_model()})" if active_model() else "🟡 Yapılandırıldı (canlı test: /ai_durum)") if (HAS_GENAI and GEMINI_API_KEY) else "🟡 Yerleşik Uzman Modu (/ai_durum ile kontrol edin)"
     welcome_text = (
         "🇺🇸 *Green Card (DV-2027) 360° Proaktif Süreç Yöneticinize Hoş Geldiniz!*\n\n"
         f"🤖 *AI Koçluk Motoru:* {ai_badge}\n\n"
