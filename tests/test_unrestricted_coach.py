@@ -101,6 +101,43 @@ class UnrestrictedCoachTests(unittest.TestCase):
         ]
         self.assertTrue(bot.is_gc_process_query("Peki bu durum başvuru tarihini etkiler mi?", history))
 
+    def test_user_profile_facts_injected_in_prompt(self):
+        """When user has stored profile facts, they are injected into Gemini prompt."""
+        self.profile["user_facts"] = {
+            "meslek": "Kıdemli Yazılımcı",
+            "butce": "20.000$",
+            "hedef_lokasyon": "Austin, Texas",
+        }
+        mock_response = MagicMock(text="Austin'de yazılımcı olarak 20 bin dolar birikimle ilk 3 ay rahat yönetilir.")
+        with patch.object(bot, "HAS_GENAI", True), \
+             patch.object(bot, "GEMINI_API_KEY", "fake_key"), \
+             patch("greencard_telegram_bot.genai.Client"), \
+             patch("greencard_telegram_bot.generate_with_fallback", return_value=(mock_response, "gemini-3.5-flash-lite")) as mock_gen:
+            
+            reply = bot.answer_user_question("Oraya gidince ilk ay ev kiralamak zor mu?", self.profile)
+            self.assertIn("Austin", reply)
+            
+            call_kwargs = mock_gen.call_args[1]
+            contents = call_kwargs["contents"]
+            self.assertIn("KULLANICININ BİLİNEN KİŞİSEL PROFİLİ", contents)
+            self.assertIn("Kıdemli Yazılımcı", contents)
+            self.assertIn("20.000$", contents)
+            self.assertIn("Austin, Texas", contents)
+
+    def test_empty_user_profile_facts_not_injected(self):
+        """When user facts are empty, profile block is omitted from prompt."""
+        self.profile["user_facts"] = {}
+        mock_response = MagicMock(text="Genel tavsiyem...")
+        with patch.object(bot, "HAS_GENAI", True), \
+             patch.object(bot, "GEMINI_API_KEY", "fake_key"), \
+             patch("greencard_telegram_bot.genai.Client"), \
+             patch("greencard_telegram_bot.generate_with_fallback", return_value=(mock_response, "gemini-3.5-flash-lite")) as mock_gen:
+            
+            bot.answer_user_question("Genel tavsiyen nedir?", self.profile)
+            call_kwargs = mock_gen.call_args[1]
+            contents = call_kwargs["contents"]
+            self.assertNotIn("KULLANICININ BİLİNEN KİŞİSEL PROFİLİ", contents)
+
 
 if __name__ == "__main__":
     unittest.main()

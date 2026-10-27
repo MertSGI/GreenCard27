@@ -70,6 +70,15 @@ from telegram.ext import (
 
 from gemini_runtime import generate_with_fallback, active_model, error_code
 from web_research import research_web, web_context, source_links, SearchPrivacyError, is_perspective_question, perspective_digest
+from profile_manager import (
+    extract_profile_facts,
+    update_user_facts,
+    set_profile_field,
+    clear_profile_facts,
+    format_profile_view,
+    format_profile_for_prompt,
+    normalize_field_name,
+)
 
 # Gemini API (google-genai) Desteği
 try:
@@ -288,6 +297,7 @@ def get_user_profile(state: Dict[str, Any], chat_id: int) -> Dict[str, Any]:
             "interview_step": None,
             "confirmation_number": "",
             "chat_history": [],
+            "user_facts": {},
         }
     else:
         for key, _ in CHECKLIST_ITEMS:
@@ -295,6 +305,7 @@ def get_user_profile(state: Dict[str, Any], chat_id: int) -> Dict[str, Any]:
         state["users"][uid].setdefault("interview_step", None)
         state["users"][uid].setdefault("chat_history", [])
         state["users"][uid].setdefault("confirmation_number", "")
+        state["users"][uid].setdefault("user_facts", {})
     if chat_id not in state["subscribers"]:
         state["subscribers"].append(chat_id)
     save_state(state)
@@ -520,6 +531,20 @@ def answer_user_question(question: str, profile: Dict[str, Any], force_web: bool
                     "═══════════════════════════════════════════════════════════════"
                 )
 
+            user_profile_ctx = format_profile_for_prompt(profile.get("user_facts", {}))
+            if user_profile_ctx:
+                prompt_parts.append(
+                    "═══════════════════════════════════════════════════════════════\n"
+                    "👤 [KULLANICININ BİLİNEN KİŞİSEL PROFİLİ VE BİLGİLERİ]\n"
+                    "Kullanıcının kendisi hakkında paylaştığı doğrulanmış bilgiler:\n"
+                    f"{user_profile_ctx}\n"
+                    "⚠️ KİŞİSELLEŞTİRME VE STRATEJİ TALİMATI:\n"
+                    "- Kullanıcının bu mesleğini, aile durumunu, hedef lokasyonunu ve bütçesini göz önünde bulundur.\n"
+                    "- Tavsiyelerini doğrudan bu gerçeklere uygun şekilde somutlaştır.\n"
+                    "- Robotik kalıplardan kaçın; 'Profilinizde belirttiğiniz gibi...' demeden doğal ve kıdemli bir danışman gibi bu duruma özel analiz üret.\n"
+                    "═══════════════════════════════════════════════════════════════"
+                )
+
             if personal_relevant:
                 prompt_parts.append(f"📋 [KULLANICININ HAZIRLIK PROFİLİ]\n{build_user_context_summary(profile)}\n")
 
@@ -742,6 +767,7 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("💬 Hukukçu & Forum Görüşleri", callback_data="menu_opinions"),
         ],
         [
+            InlineKeyboardButton("👤 Profilim & Akıllı Hafıza", callback_data="menu_profile"),
             InlineKeyboardButton("🧹 Sohbet Hafızasını Temizle", callback_data="menu_clearmemory"),
         ],
     ]
@@ -856,6 +882,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "Artık hiçbir yapay sınır veya kalıp olmadan, tamamen sizin lehinize düşünen stratejik akıl hocanızım:\n"
         "• 💬 *Kısıtlamasız Koçluk & Stratejik Yorum:* Green Card sürecinin yanı sıra ABD'de yaşam, eyalet/şehir seçimi, iş piyasası, maaşlar, kira, kariyer planı, İngilizce gelişimi, alternatif vizeler veya kişisel kararlarınızı bana sorabilirsiniz. Sadece kuru bilgi vermekle kalmaz, 'Senin yerinde olsam şöyle yapardım' diyerek kendi stratejik değerlendirmemi sunarım.\n"
         "• 🧠 *Çoklu Sohbet Hafızası:* Konuşmalarımızın bağlamını hatırlarım (`/hafiza_temizle` ile sıfırlayabilirsiniz).\n"
+        "• 👤 *Akıllı Profil Hafızası:* Mesleğinizi, ailenizi, hedef eyaletinizi ve bütçenizi hatırlarım (`/profilim`, `/profil`). Tavsiyelerimi doğrudan profilinize özel hazırlarım.\n"
         "• 🧭 *Süreç Araçları:* 12 Adımlı Checklist (`/checklist`), DS-260 Simülatörü (`/ds260`), Canlı Mülakat Provası (`/mulakat`), Fotoğraf & Pasaport Testi (`/fotograf`) ve Günlük Plan (`/bugun`).\n"
         "• 🔎 *Görüş ve Haber Taraması:* Canlı araştırma (`/ara`), Hukukçu & forum görüşleri (`/yorumlar`).\n\n"
         "👇 *Menüden bir işlem seçebilir veya merak ettiğiniz her şeyi doğrudan mesaj olarak yazabilirsiniz:*"
@@ -876,7 +903,69 @@ async def cmd_clear_memory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     save_state(state)
     await update.message.reply_text(
         "🧹 *Sohbet hafızası temizlendi!*\n"
-        "Checklist ve DS-260 kayıtlarınız korundu. Yeni bir konu veya soruyla dilediğiniz gibi devam edebiliriz.",
+        "Checklist, DS-260 ve profil kayıtlarınız korundu. (Profilinizi sıfırlamak isterseniz: `/profil_temizle`). Yeni bir konu veya soruyla dilediğiniz gibi devam edebiliriz.",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_main_menu_keyboard(),
+    )
+
+
+async def cmd_profilim(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    view_text = format_profile_view(profile.get("user_facts", {}))
+    await update.message.reply_text(
+        view_text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_main_menu_keyboard(),
+    )
+
+
+async def cmd_profil_temizle(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    clear_profile_facts(profile)
+    save_state(state)
+    await update.message.reply_text(
+        "🧹 *Kişisel profil hafızanız temizlendi!*\n"
+        "Meslek, bütçe, aile ve lokasyon bilgileriniz sıfırlandı. Yeni mesajlarınızla dilediğiniz zaman otomatik olarak tekrar oluşturabilirsiniz.",
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_main_menu_keyboard(),
+    )
+
+
+async def cmd_profil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    args = context.args or []
+    if len(args) < 2:
+        await update.message.reply_text(
+            "ℹ️ *Profil Güncelleme Kullanımı:*\n"
+            "`/profil <alan> <bilgi>`\n\n"
+            "Örnekler:\n"
+            "• `/profil meslek Yazılım Mühendisi`\n"
+            "• `/profil butce 20.000$`\n"
+            "• `/profil hedef Austin, Texas`\n"
+            "• `/profil aile Evli, 1 çocuk`\n"
+            "• `/profil egitim Lisans`\n"
+            "• `/profil ingilizce B2`\n\n"
+            "Mevcut profilinizi görmek için: `/profilim`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+    field_alias = args[0]
+    val = " ".join(args[1:]).strip()
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    facts = profile.setdefault("user_facts", {})
+    canon = set_profile_field(facts, field_alias, val)
+    if not canon:
+        await update.message.reply_text(
+            f"⚠️ Geçersiz profil alanı: `{field_alias}`\n"
+            "Kullanılabilir alanlar: `meslek`, `butce`, `hedef`, `aile`, `egitim`, `ingilizce`, `not`",
+            parse_mode=ParseMode.MARKDOWN,
+        )
+        return
+    save_state(state)
+    await update.message.reply_text(
+        f"✅ Profil güncellendi!\n*{canon}*: {val}\n\nProfilinizi görmek için: `/profilim`",
         parse_mode=ParseMode.MARKDOWN,
         reply_markup=build_main_menu_keyboard(),
     )
@@ -1101,7 +1190,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         profile["chat_history"] = []
         save_state(state)
         await query.edit_message_text(
-            "🧹 *Sohbet hafızası temizlendi!*\nChecklist ve DS-260 kayıtlarınız korundu. Yeni bir soruyla devam edebiliriz.",
+            "🧹 *Sohbet hafızası temizlendi!*\nChecklist, DS-260 ve profil kayıtlarınız korundu. Yeni bir soruyla devam edebiliriz.",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=build_main_menu_keyboard(),
+        )
+    elif data == "menu_profile":
+        view_text = format_profile_view(profile.get("user_facts", {}))
+        await query.edit_message_text(
+            view_text,
             parse_mode=ParseMode.MARKDOWN,
             reply_markup=build_main_menu_keyboard(),
         )
@@ -1340,7 +1436,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         )
         return
 
-    # 3. Kısıtlamasız Kişisel Koçluk (Çoklu Sohbet Hafızalı)
+    # 3. Kısıtlamasız Kişisel Koçluk (Çoklu Sohbet & Profil Hafızalı)
+    # Kullanıcı mesajından sessiz profil çıkarımı
+    extracted = extract_profile_facts(text)
+    if extracted:
+        user_facts = profile.setdefault("user_facts", {})
+        if update_user_facts(user_facts, extracted):
+            logger.info("Kullanıcı profili güncellendi: %s", extracted)
+            save_state(state)
+
     thinking_msg = await update.message.reply_text("🧠 _Kişisel koçunuz düşünüyor..._", parse_mode=ParseMode.MARKDOWN)
     reply = await asyncio.to_thread(answer_user_question, text, profile)
 
@@ -1459,6 +1563,9 @@ def main() -> None:
     # Komut Kayıtları
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("hafiza_temizle", cmd_clear_memory))
+    app.add_handler(CommandHandler("profilim", cmd_profilim))
+    app.add_handler(CommandHandler("profil", cmd_profil))
+    app.add_handler(CommandHandler("profil_temizle", cmd_profil_temizle))
     app.add_handler(CommandHandler("bugun", cmd_bugun))
     app.add_handler(CommandHandler("bildirim_test", cmd_bildirim_test))
     app.add_handler(CommandHandler("id", cmd_id))

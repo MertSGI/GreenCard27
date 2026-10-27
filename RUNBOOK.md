@@ -2,7 +2,10 @@
 
 ### Temel Telegram Komutları:
 - `/start`: Botu başlatır, ana menüyü ve özellikleri tanıtır.
-- `/hafiza_temizle`: Sohbet hafızasını temizler; checklist ve DS-260 kayıtlarını korur.
+- `/hafiza_temizle`: Kısa süreli sohbet hafızasını temizler; checklist, DS-260 ve profil kayıtlarını korur.
+- `/profilim`: Kişisel profil hafızanızı görüntüler (meslek, bütçe, aile, hedef lokasyon, eğitim, İngilizce).
+- `/profil <alan> <bilgi>`: Manuel olarak profil bilgisi günceller (ör. `/profil butce 25.000$`, `/profil hedef Austin, Texas`).
+- `/profil_temizle`: Saklanan tüm kişisel profil hafızasını sıfırlar.
 - `/bugun`: Günlük kişisel adımlar ve somut eylem planı.
 - `/bildirim_test`: Günlük koçluk bildirimini anında test eder.
 - `/ara <konu>`: Canlı web araştırması yapar (pasaport/özel veri içermez).
