@@ -221,6 +221,13 @@ TEMEL ÇALIŞMA VE KOÇLUK İLKELERİN (SINIRSIZ & ÖZGÜR MOD):
 5. DİL VE ÜSLUP:
    - Akıcı, zeki, vizyoner, motive edici, analitik ve samimi Türkçe.
    - Gereksiz bürokratik ikazlardan uzak, çözüm ve sonuç odaklı.
+
+6. KESİNTİSİZ SOHBET HAFIZASI VE DİYALOG BAĞLAMI (MULTI-TURN CONTINUITY):
+   - Sen kullanıcıyla süregelen, canlı bir sohbet içindesin; tek seferlik çalışan bir arama motoru değilsin!
+   - Kullanıcının önceki mesajlarını ve senin ona az önce verdiğin cevapları ASLA unutma.
+   - Kullanıcı sana önceki cevabına atıfta bulunarak kısa bir soru veya karşılık verdiğinde (örn. "peki orası nasıl?", "2. maddeyi açıklar mısın?", "onu yaptım sıradaki ne?", "neden öyle dedin?", "peki eşim ne yapacak?"), bunu ASLA yeni ve bağımsız bir soru olarak algılama!
+   - Kullanıcının zamirlerini ("o", "bu", "orası", "diğeri"), madde numaralarını ("1. madde", "2. adım") veya devam ifadelerini ("peki ya...", "sonraki...") senin bir önceki yanıtında geçen konuya (eyalete, vizeye, belgeye, tavsiyeye) doğrudan bağla ve konuşmayı kesintisiz sürdür.
+   - Her mesajda tekrar tekrar "Merhaba!", "Harika bir soru!", "Sevgili danışanım" gibi ilk tanışma kalıpları veya resmi robotik açılışlar KULLANMA. Sohbetin doğal akışını koruyarak doğrudan konuya gir.
 """
 
 
@@ -367,25 +374,44 @@ def check_official_dv_portal() -> Dict[str, str]:
 # YARDIMCI KONTROL FONKSİYONLARI VE GEMINI GÜVENLİK AYARLARI
 # ============================================================================
 
-def is_personal_progress_query(q: str) -> bool:
+def is_personal_progress_query(q: str, history: Optional[List[Dict[str, str]]] = None) -> bool:
     ql = q.casefold()
     progress_words = (
         "checklist", "kontrol listesi", "adımım", "durumum", "sırada ne var",
         "ne yapmalıyım", "eksik", "eksiklerim", "profilim", "ds260", "ds-260",
-        "fotoğrafım", "pasaportum hazır mı", "ilerleme", "hazırlık durum", "ödevim"
+        "fotoğrafım", "pasaportum hazır mı", "ilerleme", "hazırlık durum", "ödevim",
+        "sıradaki", "sonraki adım", "hangisini yapayım", "onu yaptım", "tamamladım",
+        "hallettim"
     )
-    return any(w in ql for w in progress_words)
+    if any(w in ql for w in progress_words):
+        return True
+    if history:
+        last_msgs = [m.get("text", "").casefold() for m in history[-2:]]
+        if any(any(pw in lm for pw in ("checklist", "kontrol listesi", "adım", "hazırlık", "ds-260", "faz")) for lm in last_msgs):
+            follow_ups = ("sıradaki", "sonraki", "diğeri", "peki ya", "tamam", "bitti", "hallettim", "şimdi ne", "hangisi")
+            if any(fu in ql for fu in follow_ups):
+                return True
+    return False
 
 
-def is_gc_process_query(q: str) -> bool:
+def is_gc_process_query(q: str, history: Optional[List[Dict[str, str]]] = None) -> bool:
     ql = q.casefold()
     gc_words = (
         "dv-2027", "dv 2027", "dv2027", "dv-2028", "diversity visa", "green card",
         "greencard", "çekiliş", "lottery", "red eagle", "rubio", "mahkeme",
         "dava", "injunction", "kcc", "ceac", "konsolosluk mülakat", "vize bülteni",
-        "visa bulletin", "case number", "entrant status check", "ds-5501"
+        "visa bulletin", "case number", "entrant status check", "ds-5501",
+        "başvuru tarihi", "kayıt ücreti"
     )
-    return any(w in ql for w in gc_words)
+    if any(w in ql for w in gc_words):
+        return True
+    if history:
+        last_msgs = [m.get("text", "").casefold() for m in history[-2:]]
+        if any(any(gw in lm for gw in ("dv-2027", "çekiliş", "red eagle", "mahkeme", "dava", "green card")) for lm in last_msgs):
+            follow_ups = ("peki bu", "yani ne zaman", "ertelendi mi", "açıldı mı", "etkiler mi", "ne olacak", "son durum")
+            if any(fu in ql for fu in follow_ups):
+                return True
+    return False
 
 
 def build_user_context_summary(profile: Dict[str, Any]) -> str:
@@ -406,7 +432,7 @@ def build_user_context_summary(profile: Dict[str, Any]) -> str:
     )
 
 
-def format_chat_history(history: List[Dict[str, str]], max_turns: int = 10) -> str:
+def format_chat_history(history: List[Dict[str, str]], max_turns: int = 12) -> str:
     recent = history[-max_turns:]
     if not recent:
         return ""
@@ -414,8 +440,17 @@ def format_chat_history(history: List[Dict[str, str]], max_turns: int = 10) -> s
     for msg in recent:
         role = "Kullanıcı" if msg.get("role") == "user" else "Koç"
         text = (msg.get("text") or "").strip()
+        if len(text) > 1500:
+            text = text[:1500] + "... [özetlendi]"
         lines.append(f"{role}: {text}")
-    return "\n".join(lines)
+    return "\n\n".join(lines)
+
+
+def record_chat_turn(profile: Dict[str, Any], user_text: str, assistant_text: str) -> None:
+    history = profile.setdefault("chat_history", [])
+    history.append({"role": "user", "text": user_text.strip()})
+    history.append({"role": "assistant", "text": assistant_text.strip()})
+    profile["chat_history"] = history[-24:]
 
 
 def get_coach_safety_settings() -> Optional[List[Any]]:
@@ -438,9 +473,10 @@ def get_coach_safety_settings() -> Optional[List[Any]]:
 
 def answer_user_question(question: str, profile: Dict[str, Any], force_web: bool = False) -> str:
     """Kullanıcının sorusunu kısıtlamasız Kişisel Koç mantığıyla yanıtlar."""
+    history = profile.get("chat_history", [])
     perspective = is_perspective_question(question)
-    gc_relevant = is_gc_process_query(question)
-    personal_relevant = is_personal_progress_query(question)
+    gc_relevant = is_gc_process_query(question, history)
+    personal_relevant = is_personal_progress_query(question, history)
 
     web_result = None
     evidence = ""
@@ -470,24 +506,39 @@ def answer_user_question(question: str, profile: Dict[str, Any], force_web: bool
     if HAS_GENAI and GEMINI_API_KEY:
         try:
             client = genai.Client(api_key=GEMINI_API_KEY)
-            history_str = format_chat_history(profile.get("chat_history", []), max_turns=8)
+            history_str = format_chat_history(history, max_turns=12)
 
             prompt_parts = []
             if history_str:
-                prompt_parts.append(f"[ÖNCEKİ SOHBET GEÇMİŞİ (BAĞLAM)]\n{history_str}\n")
+                prompt_parts.append(
+                    "═══════════════════════════════════════════════════════════════\n"
+                    "🔴 [ÖNCEKİ SOHBET GEÇMİŞİ VE BAĞLAM (DİKKATLE İNCELE)]\n"
+                    "Aşağıda kullanıcı ile senin az önce gerçekleştirdiğin canlı sohbet yer alıyor.\n"
+                    "Kullanıcının birazdan vereceği yeni mesajı KESİNLİKLE bu geçmişin doğrudan bir devamı,\n"
+                    "bir cevabı veya takip sorusu olarak değerlendir:\n\n"
+                    f"{history_str}\n"
+                    "═══════════════════════════════════════════════════════════════"
+                )
 
             if personal_relevant:
-                prompt_parts.append(f"[KULLANICININ HAZIRLIK PROFİLİ]\n{build_user_context_summary(profile)}\n")
+                prompt_parts.append(f"📋 [KULLANICININ HAZIRLIK PROFİLİ]\n{build_user_context_summary(profile)}\n")
 
             if evidence:
-                prompt_parts.append(f"[GÜNCEL WEB VE HABER BULGULARI]\n{evidence}\n")
+                prompt_parts.append(f"🌐 [GÜNCEL WEB VE HABER BULGULARI]\n{evidence}\n")
 
             prompt_parts.append(
-                f"[KULLANICININ SORUSU]\n{question}\n\n"
-                "YÖNERGE: Kullanıcının kişisel koçu ve stratejik danışmanı olarak bu soruya doğrudan, "
-                "kapsamlı, analitik ve samimi bir yanıt ver. Kendi stratejik yorumunu, tavsiyeni ve "
-                "kullanıcı için en doğru/avantajlı olan yolu nedenleriyle açıkla. "
-                "Kullanıcı genel bir konu sorduysa ZORLA Green Card ödevleri veya checklist eksikleri dayatma."
+                f"💬 [KULLANICININ ŞİMDİKİ MESAJI / CEVABI]\n{question}\n\n"
+                "🎯 [KRİTİK BAĞLAM VE DİYALOG TALİMATLARI]:\n"
+                "1. BAĞLAMI VE ZAMİRLERİ KESİNLİKLE ÇÖZÜMLE:\n"
+                "   - Kullanıcının bu mesajı bağımsız yeni bir konu DEĞİLDİR; senin bir önceki yanıtına verilmiş bir cevap veya devam sorusudur.\n"
+                "   - Kullanıcı 'peki', 'oranın', 'o', 'bu', 'neden', '2. madde', 'bunu biraz aç', 'onu yaptım', 'hangisi mantıklı' gibi ifadeler kullandığında,\n"
+                "     senin bir önceki cevabında bahsettiğin konuya (şehre, vizeye, maddeye vb.) doğrudan atıfta bulunarak bağlamı sürdür.\n"
+                "2. TEKRARLAYAN SELAMLAMALARI BIRAK:\n"
+                "   - Kullanıcıyla zaten konuşuyorsun! Her mesaja sanki ilk kez tanışıyormuş gibi 'Merhaba!', 'Harika bir soru!' gibi kalıplarla başlama.\n"
+                "   - Doğrudan konunun içine girerek, gerçek bir insan akıl hocası gibi samimi, akıcı ve kesintisiz yanıt ver.\n"
+                "3. KİŞİSEL KOÇLUK & STRATEJİK DEĞERLENDİRME:\n"
+                "   - Kendi analizini, tavsiyeni ('Senin yerinde olsam...') ve artıları/eksileri netçe sun.\n"
+                "   - Kullanıcı genel bir konu sorduysa ZORLA Green Card ödevleri veya checklist eksikleri dayatma."
             )
             full_prompt = "\n".join(prompt_parts)
 
@@ -865,6 +916,8 @@ async def cmd_yorumlar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     state = load_state()
     profile = get_user_profile(state, update.effective_chat.id)
     reply = await asyncio.to_thread(answer_user_question, subject, profile, False)
+    record_chat_turn(profile, f"/yorumlar {subject}", reply)
+    save_state(state)
     await safe_reply_or_edit(update, reply, thinking_msg=sent, reply_markup=build_main_menu_keyboard())
 
 
@@ -882,6 +935,8 @@ async def cmd_ara(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     state = load_state()
     profile = get_user_profile(state, update.effective_chat.id)
     answer = await asyncio.to_thread(answer_user_question, topic, profile, True)
+    record_chat_turn(profile, f"/ara {topic}", answer)
+    save_state(state)
     await safe_reply_or_edit(update, answer, thinking_msg=status_msg, reply_markup=build_main_menu_keyboard())
 
 
@@ -1031,6 +1086,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_text("💬 Hukukçu ve forum görüşleri taranıyor...")
         text = "DV-2027 davası konusunda göçmenlik avukatları, Reddit ve forumlarda neler söyleniyor?"
         reply = await asyncio.to_thread(answer_user_question, text, profile, False)
+        record_chat_turn(profile, text, reply)
+        save_state(state)
         await safe_edit_response(query.message, reply, reply_markup=build_main_menu_keyboard())
     elif data == "menu_websearch":
         await query.edit_message_text(
@@ -1287,10 +1344,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     thinking_msg = await update.message.reply_text("🧠 _Kişisel koçunuz düşünüyor..._", parse_mode=ParseMode.MARKDOWN)
     reply = await asyncio.to_thread(answer_user_question, text, profile)
 
-    # Sohbet geçmişine kaydet (Son 20 mesajı tut)
-    profile.setdefault("chat_history", []).append({"role": "user", "text": text})
-    profile["chat_history"].append({"role": "assistant", "text": reply})
-    profile["chat_history"] = profile["chat_history"][-20:]
+    record_chat_turn(profile, text, reply)
     save_state(state)
 
     await safe_reply_or_edit(

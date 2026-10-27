@@ -16,13 +16,12 @@ class UnrestrictedCoachTests(unittest.TestCase):
         mock_response = MagicMock(text="Kaliforniya ve Teksas teknoloji kariyerinde iki güçlü alternatiftir.")
         with patch.object(bot, "HAS_GENAI", True), \
              patch.object(bot, "GEMINI_API_KEY", "fake_key"), \
-             patch("greencard_telegram_bot.genai.Client") as mock_client_cls, \
+             patch("greencard_telegram_bot.genai.Client"), \
              patch("greencard_telegram_bot.generate_with_fallback", return_value=(mock_response, "gemini-3.5-flash-lite")) as mock_gen:
             
             reply = bot.answer_user_question("Yazılımcı olarak Teksas mı Kaliforniya mı daha avantajlı?", self.profile)
             self.assertIn("Kaliforniya", reply)
             
-            # Check prompt content sent to Gemini
             call_kwargs = mock_gen.call_args[1]
             contents = call_kwargs["contents"]
             self.assertNotIn("KULLANICININ HAZIRLIK PROFİLİ", contents)
@@ -46,7 +45,7 @@ class UnrestrictedCoachTests(unittest.TestCase):
             self.assertIn("Tamamlanan Adımlar", contents)
 
     def test_chat_history_injected_in_prompt(self):
-        """Multi-turn memory is passed in prompt to Gemini."""
+        """Multi-turn memory is passed in prompt to Gemini with continuity instructions."""
         self.profile["chat_history"] = [
             {"role": "user", "text": "Austin hakkında ne düşünüyorsun?"},
             {"role": "assistant", "text": "Austin teknoloji şirketleri açısından hızla büyüyen bir merkez."},
@@ -64,6 +63,8 @@ class UnrestrictedCoachTests(unittest.TestCase):
             contents = call_kwargs["contents"]
             self.assertIn("ÖNCEKİ SOHBET GEÇMİŞİ", contents)
             self.assertIn("Austin hakkında ne düşünüyorsun?", contents)
+            self.assertIn("KRİTİK BAĞLAM VE DİYALOG TALİMATLARI", contents)
+            self.assertIn("BAĞLAMI VE ZAMİRLERİ KESİNLİKLE ÇÖZÜMLE", contents)
 
     def test_format_chat_history(self):
         history = [
@@ -73,6 +74,32 @@ class UnrestrictedCoachTests(unittest.TestCase):
         formatted = bot.format_chat_history(history)
         self.assertIn("Kullanıcı: Soru 1", formatted)
         self.assertIn("Koç: Cevap 1", formatted)
+
+    def test_record_chat_turn(self):
+        profile = {"chat_history": []}
+        bot.record_chat_turn(profile, "Merhaba", "Selam, nasıl yardımcı olabilirim?")
+        self.assertEqual(len(profile["chat_history"]), 2)
+        self.assertEqual(profile["chat_history"][0]["role"], "user")
+        self.assertEqual(profile["chat_history"][0]["text"], "Merhaba")
+        self.assertEqual(profile["chat_history"][1]["role"], "assistant")
+        self.assertEqual(profile["chat_history"][1]["text"], "Selam, nasıl yardımcı olabilirim?")
+
+    def test_follow_up_progress_detection_from_history(self):
+        """Short follow-ups like 'onu yaptım sıradaki ne?' detect progress context."""
+        history = [
+            {"role": "user", "text": "Checklist'imde hangi adım var?"},
+            {"role": "assistant", "text": "1. adım pasaport geçerliliği."},
+        ]
+        self.assertTrue(bot.is_personal_progress_query("Onu yaptım, sıradaki ne?", history))
+        self.assertTrue(bot.is_personal_progress_query("Tamam bitti, şimdi ne yapıyoruz?", history))
+
+    def test_follow_up_gc_detection_from_history(self):
+        """Short follow-ups like 'peki bu durum ertelendi mi?' detect GC context."""
+        history = [
+            {"role": "user", "text": "DV-2027 Red Eagle Law davası ne durumda?"},
+            {"role": "assistant", "text": "Mahkeme tedbir kararı verdi."},
+        ]
+        self.assertTrue(bot.is_gc_process_query("Peki bu durum başvuru tarihini etkiler mi?", history))
 
 
 if __name__ == "__main__":
