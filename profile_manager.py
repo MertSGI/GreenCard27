@@ -16,6 +16,9 @@ PROFILE_FIELDS = {
     "medeni_durum": ("👨‍👩‍👧 Aile & Medeni Durum", "Evli, 1 çocuk / Bekar vb."),
     "butce": ("💵 Bütçe / Birikim", "15.000$ - 20.000$ vb."),
     "ingilizce": ("🗣 İngilizce Seviyesi", "B2, Akıcı, Orta vb."),
+    "case_number": ("🔢 Case Number", "2027EU00014250 vb."),
+    "vize_gecmisi": ("🛂 Vize / ABD Geçmişi", "F-1, B1/B2, Yok vb."),
+    "ehliyet": ("🚗 Sürücü Belgesi", "Var, Yok vb."),
     "ek_notlar": ("📝 Özel Notlar & Tercihler", "Eşi hemşire, F-1 geçmişi var vb."),
 }
 
@@ -64,6 +67,19 @@ ALIAS_MAP = {
     "dil": "ingilizce",
     "english": "ingilizce",
     "language": "ingilizce",
+    "case": "case_number",
+    "case_number": "case_number",
+    "dosya": "case_number",
+    "dosya_no": "case_number",
+    "sira": "case_number",
+    "sıra": "case_number",
+    "vize": "vize_gecmisi",
+    "vize_gecmisi": "vize_gecmisi",
+    "visa": "vize_gecmisi",
+    "ehliyet": "ehliyet",
+    "surucu": "ehliyet",
+    "sürücü": "ehliyet",
+    "araba": "ehliyet",
     "not": "ek_notlar",
     "ek": "ek_notlar",
     "ozel": "ek_notlar",
@@ -213,6 +229,31 @@ def extract_profile_facts(text: str) -> Dict[str, str]:
         m = re.search(r"\b(b1|b2|c1|c2)\b", lower)
         if m:
             found["ingilizce"] = m.group(1).upper()
+
+    # 7. Case Number (DV Dosya Numarası)
+    case_m = re.search(r"\b(202[5-8]\s*[a-zA-Z]{2}\s*0*\d{1,8})\b", lower)
+    if case_m:
+        c_clean = re.sub(r"\s+", "", case_m.group(1)).upper()
+        found["case_number"] = c_clean
+    else:
+        short_case_m = re.search(r"\b(eu|as|af|oc|sa)\s*0*([1-9]\d{2,7})\b", lower)
+        if short_case_m:
+            reg_c, num_c = short_case_m.groups()
+            found["case_number"] = f"2027{reg_c.upper()}{int(num_c):08d}"
+
+    # 8. Sürücü Belgesi (Ehliyet)
+    if re.search(r"\behliyet(?:im)?\s*var\b", lower):
+        found["ehliyet"] = "Ehliyet Var"
+    elif re.search(r"\behliyet(?:im)?\s*yok\b", lower):
+        found["ehliyet"] = "Ehliyet Yok"
+
+    # 9. Vize / ABD Geçmişi
+    if "daha önce abd'ye gitmedim" in lower or "ilk defa gideceğim" in lower:
+        found["vize_gecmisi"] = "ABD'ye daha önce gitmedi"
+    elif re.search(r"\b(f-?1|b1/?b2|j-?1|h-?1b)\s*(?:vize(?:si|m)?|ile)\b", lower):
+        vm = re.search(r"\b(f-?1|b1/?b2|j-?1|h-?1b)\b", lower)
+        if vm:
+            found["vize_gecmisi"] = f"{vm.group(1).upper()} Vize Geçmişi"
 
     return found
 

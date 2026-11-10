@@ -138,6 +138,12 @@ class UnrestrictedCoachTests(unittest.TestCase):
             contents = call_kwargs["contents"]
             self.assertNotIn("KULLANICININ BİLİNEN KİŞİSEL PROFİLİ", contents)
 
+    def test_consultancy_and_transfer_queries_detected(self):
+        """Consultancy terms like dosya taşıma, KCC, and B1/B2 214(b) trigger GC/visa context."""
+        self.assertTrue(bot.is_gc_process_query("Ankara'dan Viyana'ya dosya taşıma nasıl yapılır?"))
+        self.assertTrue(bot.is_gc_process_query("KCC üzerinden DS-260 unlock ettirmem lazım"))
+        self.assertTrue(bot.is_gc_process_query("B1/B2 turist vizesinde 214(b) reddi riski nedir?"))
+
 
 if __name__ == "__main__":
     unittest.main()

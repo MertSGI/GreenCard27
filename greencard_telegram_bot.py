@@ -69,7 +69,16 @@ from telegram.ext import (
 )
 
 from gemini_runtime import generate_with_fallback, active_model, error_code
-from web_research import research_web, web_context, source_links, SearchPrivacyError, is_perspective_question, perspective_digest
+from web_research import (
+    research_web,
+    web_context,
+    source_links,
+    SearchPrivacyError,
+    is_perspective_question,
+    perspective_digest,
+    fetch_latest_gc_news,
+)
+from coach_core import due, digest, new_headlines, format_news_item, analyze_daily_news_scenarios
 from profile_manager import (
     extract_profile_facts,
     update_user_facts,
@@ -78,6 +87,33 @@ from profile_manager import (
     format_profile_view,
     format_profile_for_prompt,
     normalize_field_name,
+)
+from visa_consultant import (
+    analyze_transfer_and_build_letter,
+    analyze_all_us_visas,
+    audit_ds260_consistency,
+    generate_proactive_case_emails,
+    build_proactive_action_plan,
+)
+from strategy_advisor import (
+    calculate_relocation_budget,
+    format_runway_report,
+    compare_states,
+    get_state_profile,
+    get_state_keys,
+    analyze_case_number,
+    format_case_analysis,
+    generate_readiness_audit,
+    format_audit_report,
+    get_visa_routes_guide,
+    lookup_glossary,
+    GLOSSARY_TERMS,
+    analyze_court_and_timeline,
+    get_full_lifecycle_guide,
+)
+from photo_validator import (
+    validate_biometric_photo,
+    validate_passport_scan,
 )
 
 # Gemini API (google-genai) Desteği
@@ -111,10 +147,10 @@ TZ_TR = timezone(timedelta(hours=3))
 # Kritik DV-2027 Takvim Kilometre Taşları
 MILESTONES = [
     {
-        "id": "court_announcement_target",
+        "id": "ninth_circuit_stay",
         "date": "2026-10-29",
-        "title": "Mahkeme Hedefi: Resmî Bakanlık Duyurusu",
-        "desc": "Red Eagle Law davasında mahkemenin koyduğu hedef ayrı; Bakanlığın resmî ilanı ve başvuru takvimi ayrıca teyit edilmelidir.",
+        "title": "9. Daire Temyiz Mahkemesi: Acil Yürütmeyi Durdurma (Emergency Stay)",
+        "desc": "Red Eagle Law davasında 9. Daire Temyiz Mahkemesi yürütmeyi durdurma kararı verdi; DV-2027 kayıtları temyiz ve yeni dava/Bakanlık duyurusu sonuçlanana kadar askıda.",
     },
     {
         "id": "fiscal_year_end",
@@ -205,38 +241,46 @@ INTERVIEW_QUESTIONS = [
 # ============================================================================
 
 UNRESTRICTED_COACH_SYSTEM_PROMPT = """
-Sen kullanıcının en güvendiği Kişisel Koçu, Stratejik Akıl Hocası, Hayat & Kariyer Danışmanı ve Green Card Süreç Yöneticisisin.
+Sen kullanıcının en güvendiği Kişisel Asistanı, 360° Süreç Yöneticisi, Amerikan Vizesi Danışmanı, Stratejik Akıl Hocası ve Titiz Araştırmacısısın.
 
-TEMEL ÇALIŞMA VE KOÇLUK İLKELERİN (SINIRSIZ & ÖZGÜR MOD):
-1. HİÇBİR KONU KISITLAMASI YOKTUR VE BÜROKRATİK KAÇAMAKLAR YASAKTIR:
-   - Kullanıcı sana Green Card ve ABD göçmenlik süreçlerinin yanı sıra; ABD'de yaşam, eyalet ve şehir karşılaştırmaları (vergiler, yaşam maliyeti, iklim, güvenlik, iş olanakları), kariyer ve iş piyasası (özellikle yazılım mühendisliği, teknoloji, sağlık, işletme, ticaret vb.), maaşlar, ev kiraları, alternatif vizeler (F-1/OPT, STEM OPT, H-1B, O-1, L-1, EB-1/2/3, E-2), İngilizce geliştirme taktikleri, finansal birikim, psikolojik motivasyon ve günlük kişisel kararları hakkında HERHANGİ BİR SORU sorabilir.
-   - Asla "Ben sadece bir botum / yapay zekayım", "Hukuki/finansal tavsiye veremem, bir avukata/uzmana danışın" gibi soğuk, bürokratik ve kaçamak kalıplarla kullanıcıyı geçiştirme. Kullanıcı analitik düşünen reşit bir bireydir; senden cesur, derinlemesine, gerçekçi ve samimi bir akıl hocalığı beklemektedir.
+TEMEL KARAKTER VE ÇALIŞMA İLKELERİN (DANIŞMAN & İNSAN MODU):
+1. İNSAN GİBİ KONUŞ VE SAMİMİ OL (ROBOTİK VE BÜROKRATİK KALIPLAR KESİNLİKLE YASAKTIR):
+   - Sen soğuk bir çağrı merkezi botu veya kural okuyan bir yapay zeka değilsin. Gerçek bir dost, güvenilir bir sırdaş ve tecrübeli bir danışman gibi konuş.
+   - Asla "Ben sadece bir yapay zekayım / botum", "Yasal tavsiye veremem, bir avukata danışın", "Merhaba!", "Harika bir soru!", "Sevgili danışanım" gibi klişeler KULLANMA.
+   - Doğrudan konunun merkezine gir. Empati kur: Kullanıcının heyecanını, belirsizlikten doğan stresini, mülakat kaygılarını veya geleceğe dair umutlarını derinden anladığını hissettir. "Bak dostum, gel şu tabloyu birlikte netleştirelim", "Senin yerinde olsaydım ilk olarak şunu yapardım..." diyerek samimi, cesur ve güven veren bir ton kullan.
 
-2. KENDİ STRATEJİK YORUMUNU VE FİKRİNİ AÇIKÇA KAT:
-   - Kuru bilgi aktarmakla yetinme.
-   - Seçeneklerin görünmeyen risklerini, pratik hayat gerçeklerini ve fırsatlarını masaya yatır.
-   - Mutlaka kendi stratejik değerlendirmeni yap; "Senin yerinde olsam şöyle yapardım...", "Benim stratejik tavsiyem..." diyerek kullanıcı için en avantajlı, en güvenli ve en akılcı yolu gerekçeleriyle sun.
+2. DANIŞMAN GİBİ YÖNLENDİR (STRATEJİK VE NET FİKİR SAHİBİ OL):
+   - Kuru bilgi aktarmak yetersizdir. Her cevabına kendi analitik yorumunu, risk ve fırsat değerlendirmeni kat.
+   - Adayın lehine olan en güvenli, en hızlı ve en akılcı yolu gerekçeleriyle sun. Masadaki seçeneklerin gizli risklerini (ör. kredi skoru olmadan ev kiralama zorluğu, mülakatta kamu yükü şüphesi doğuracak bütçe sınırları, DS-260 adres tutarsızlıkları) açıkça uyar.
 
-3. KULLANICININ ODAĞINA SAYGI DUY (ZORLAMA GÖREV VEYA CHECKLIST DAYATMA):
-   - Kullanıcı genel bir kariyer, eyalet, yaşam, İngilizce veya kişisel karar sorduğunda, konuyu ZORLA Green Card eksiklerine, pasaport taramasına veya checklist görevlerine çekme!
-   - Kullanıcının sorduğu konuyu tüm derinliğiyle yanıtla.
-   - Yalnızca kullanıcı Green Card hazırlık durumunu, kendi ilerlemesini veya sıradaki adımlarını sorduğunda hazırlık profilini dikkate alarak takvim ve görev tavsiyesi ver.
+3. ARAŞTIRMACI GİBİ YANIT ÜRET (VERİ, MAHKEME VE KAYNAK ODAKLI):
+   - Spekülasyon ile doğrulanmış resmi gerçekleri net biçimde ayırt et.
+   - Federal mahkeme kararlarını (Ninth Circuit temyiz süreci, Red Eagle Law v. Rubio davası, stay kararları), Dışişleri Bakanlığı yönergelerini (FAM), AILA bültenlerini ve Reddit/VisaJourney göçmenlik topluluklarının gerçek deneyimlerini sentezleyerek konuş.
 
-4. GÜNCEL DOSYA VE HUKUKİ BİLGİLERİ DOĞRU YORUMLA:
-   - Mahkeme hedefleri (ör. Red Eagle Law davasındaki tedbir kararları), Dışişleri Bakanlığı'nın resmi duyuruları ve portalın fiilen açılması birbirinden farklı aşamalardır.
-   - Henüz teyit edilmemiş spekülatif tarihleri kesin gerçek gibi sunma; doğrulanmış resmi durum ile olasılıkları açıkça ayırt et.
-   - Forum veya avukat yorumları sorulduğunda, farklı görüş ve senaryoları açıkça kaynak ve argümanlarıyla aktar.
+4. KULLANICININ YERİNE DÜŞÜN (PROAKTİF ÖNGÖRÜ VE SENARYO PLANLAMA):
+   - Kullanıcının sadece sorduğu soruyla yetinme; onun durumunu (mesleği, bütçesi, ailesi, hedef eyaleti, case number'ı) analiz ederek bir sonraki aşamayı onun yerine düşün!
+   - Örneğin mahkeme sürecini soruyorsa; sadece mahkemeyi anlatıp bırakma, "Mahkeme temyizdeyken senin şu an yapman gereken pasaport ve evrak ön-hazırlığıdır. Eğer portal Aralık'ta açılırsa takvim şöyle işler..." diyerek adayı daima bir adım önde tut.
 
-5. DİL VE ÜSLUP:
-   - Akıcı, zeki, vizyoner, motive edici, analitik ve samimi Türkçe.
-   - Gereksiz bürokratik ikazlardan uzak, çözüm ve sonuç odaklı.
+5. GREEN CARD SÜRECİNİN TÜMÜNÜ KAPSAYAN DERİN UZMANLIK (A'DAN Z'YE):
+   - DV-2027 mahkeme davaları ve başvuru portalı olasılıkları.
+   - DS-5501 çekiliş formu kuralları, 1$ harç, biyometrik fotoğraf standartları.
+   - Entrant Status Check (ESC) sonuç sorgulama ve Case Number analizi.
+   - Visa Bulletin (Vize Bülteni) cut-off takibi ve mülakat ayı projeksiyonu.
+   - DS-260 Göçmen Vize Formu: 16 yaşından günümüze tarihçeli adresler, son 10 yıllık SGK iş geçmişi, seyahatler, güvenlik ve askerlik soruları.
+   - e-Devlet evrakları: Formül A (Doğum), Formül B (Evlilik), Arşiv kayıtlı Adli Sicil belgesi.
+   - Konsolosluk randevu mektubu (2NL) ve Ankara bekleme sürelerine karşı 2025-2026 güncel kurallarıyla dosya taşıma (Case Transfer: yasal oturum/ikamet şartı, 2NL öncesi KCCDV@state.gov vs 2NL sonrası Konsolosluk yazışmaları) taktikleri.
+   - Tüm Amerikan Vizeleri Danışmanlığı: B1/B2 Turistik & İş Vizesi (INA 214(b) geri dönüş bağları analizi, DS-160 tutarlılığı, ustraveldocs.com slot ve acil randevu kriterleri), F-1 Öğrenci & STEM OPT, E-2 Yatırımcı Vizesi, EB-2 NIW (şirketsiz doğrudan Green Card), O-1, L-1, H-1B.
+   - Unganlar Sağlık Muayenesi: Aşılar (MMR, Tetanoz, Hepatit B, Suçiçeği), antikor testleri, akciğer filmi.
+   - Public Charge Savunması: Vize memuru karşısında finansal birikim, meslek denklik ve Form I-134 sponsoru.
+   - Konsolosluk Mülakatı: Vize memuru çapraz soruları, 221(g) idari işlem riskleri.
+   - Vize basımı sonrası: $220 USCIS Immigrant Fee, Port of Entry (ilk ABD havalimanı girişi, pasaport kontrolü, I-551 geçici damgası).
+   - İlk 90 Gün Hayatta Kalma: SSN gelişi, fiziksel Green Card posta takibi, Bank of America / Chase hesap açılışı, Secured Credit Card ile Credit Score inşası, DMV ehliyet alma, ev kiralama, sağlık sigortası.
+   - B Planı (Alternatif Vizeler): EB-2 NIW (şirketsiz Green Card), O-1, H-1B (ve Cap-Exempt), L-1, F-1 STEM OPT.
 
-6. KESİNTİSİZ SOHBET HAFIZASI VE DİYALOG BAĞLAMI (MULTI-TURN CONTINUITY):
-   - Sen kullanıcıyla süregelen, canlı bir sohbet içindesin; tek seferlik çalışan bir arama motoru değilsin!
-   - Kullanıcının önceki mesajlarını ve senin ona az önce verdiğin cevapları ASLA unutma.
-   - Kullanıcı sana önceki cevabına atıfta bulunarak kısa bir soru veya karşılık verdiğinde (örn. "peki orası nasıl?", "2. maddeyi açıklar mısın?", "onu yaptım sıradaki ne?", "neden öyle dedin?", "peki eşim ne yapacak?"), bunu ASLA yeni ve bağımsız bir soru olarak algılama!
-   - Kullanıcının zamirlerini ("o", "bu", "orası", "diğeri"), madde numaralarını ("1. madde", "2. adım") veya devam ifadelerini ("peki ya...", "sonraki...") senin bir önceki yanıtında geçen konuya (eyalete, vizeye, belgeye, tavsiyeye) doğrudan bağla ve konuşmayı kesintisiz sürdür.
-   - Her mesajda tekrar tekrar "Merhaba!", "Harika bir soru!", "Sevgili danışanım" gibi ilk tanışma kalıpları veya resmi robotik açılışlar KULLANMA. Sohbetin doğal akışını koruyarak doğrudan konuya gir.
+6. DERİN SOHBET HAFIZASI VE GEÇMİŞİ UNUTMAMA (MULTI-TURN CONTINUITY):
+   - Kullanıcıyla süregelen, yaşayan bir diyalog içindesin.
+   - Kullanıcının önceki mesajlarında paylaştığı mesleği, eşini, çocuklarını, gitmek istediği şehri, bütçesini, endişelerini ve hayallerini asla aklından çıkarma.
+   - Kısa ve devam niteliğindeki soruları ("peki orası nasıl?", "2. maddeyi açar mısın?", "onu yaptım", "eşim ne yapacak?") doğrudan bir önceki konuya ve kullanıcının kişisel profiline bağlayarak kesintisiz sürdür.
 """
 
 
@@ -313,46 +357,8 @@ def get_user_profile(state: Dict[str, Any], chat_id: int) -> Dict[str, Any]:
 
 
 # ============================================================================
-# CANLI HABER VE RESMİ PORTAL TARAMA MOTORU
+# RESMİ PORTAL VE CANLI DURUM KONTROLÜ
 # ============================================================================
-
-def fetch_latest_gc_news(max_items: int = 5) -> List[Dict[str, str]]:
-    rss_urls = [
-        "https://news.google.com/rss/search?q=DV-2027+OR+%22Diversity+Visa%22+lottery+when:7d&hl=en-US&gl=US&ceid=US:en",
-        "https://news.google.com/rss/search?q=%22Green+Card%22+DV-2027+mahkeme+OR+ba%C5%9Fvuru+when:7d&hl=tr&gl=TR&ceid=TR:tr",
-    ]
-    items: List[Dict[str, str]] = []
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; GreenCardProcessManager/3.0)"}
-
-    for url in rss_urls:
-        try:
-            resp = requests.get(url, headers=headers, timeout=12)
-            if resp.status_code != 200:
-                continue
-            root = ET.fromstring(resp.content)
-            for item in root.findall(".//item")[:max_items]:
-                title = (item.findtext("title") or "").strip()
-                link = (item.findtext("link") or "").strip()
-                pub_date = (item.findtext("pubDate") or "").strip()
-                if title and link:
-                    uid = hashlib.md5(f"{title}|{link}".encode("utf-8")).hexdigest()[:12]
-                    items.append({
-                        "id": uid,
-                        "title": title,
-                        "link": link,
-                        "pub_date": pub_date,
-                    })
-        except Exception as exc:
-            logger.warning("RSS tarama hatası (%s): %s", url, exc)
-
-    unique_items = []
-    seen = set()
-    for it in items:
-        if it["id"] not in seen:
-            seen.add(it["id"])
-            unique_items.append(it)
-    return unique_items[:max_items]
-
 
 def check_official_dv_portal() -> Dict[str, str]:
     url = "https://dvprogram.state.gov/"
@@ -410,16 +416,18 @@ def is_gc_process_query(q: str, history: Optional[List[Dict[str, str]]] = None) 
     gc_words = (
         "dv-2027", "dv 2027", "dv2027", "dv-2028", "diversity visa", "green card",
         "greencard", "çekiliş", "lottery", "red eagle", "rubio", "mahkeme",
-        "dava", "injunction", "kcc", "ceac", "konsolosluk mülakat", "vize bülteni",
-        "visa bulletin", "case number", "entrant status check", "ds-5501",
-        "başvuru tarihi", "kayıt ücreti"
+        "dava", "injunction", "kcc", "kccdv", "ceac", "konsolosluk", "vize bülteni",
+        "visa bulletin", "case number", "entrant status check", "ds-5501", "ds-160",
+        "başvuru tarihi", "kayıt ücreti", "dosya taşıma", "transfer", "2nl", "unlock",
+        "b1/b2", "b1", "b2", "214b", "214(b)", "eb-2", "niw", "e-2", "f-1",
+        "ustraveldocs", "acil randevu", "randevu erkene"
     )
     if any(w in ql for w in gc_words):
         return True
     if history:
         last_msgs = [m.get("text", "").casefold() for m in history[-2:]]
-        if any(any(gw in lm for gw in ("dv-2027", "çekiliş", "red eagle", "mahkeme", "dava", "green card")) for lm in last_msgs):
-            follow_ups = ("peki bu", "yani ne zaman", "ertelendi mi", "açıldı mı", "etkiler mi", "ne olacak", "son durum")
+        if any(any(gw in lm for gw in ("dv-2027", "çekiliş", "red eagle", "mahkeme", "dava", "green card", "dosya taşıma", "transfer", "vize")) for lm in last_msgs):
+            follow_ups = ("peki bu", "yani ne zaman", "ertelendi mi", "açıldı mı", "etkiler mi", "ne olacak", "son durum", "hangisi", "dilekçe")
             if any(fu in ql for fu in follow_ups):
                 return True
     return False
@@ -478,6 +486,23 @@ def get_coach_safety_settings() -> Optional[List[Any]]:
         return None
 
 
+def is_case_or_kcc_action_query(q: str, profile: Optional[Dict[str, Any]] = None) -> bool:
+    """Detect whether the user is asking about Case Number, high rank, tight schedule, or KCC/Embassy emails."""
+    ql = (q or "").casefold()
+    action_words = (
+        "sıra numara", "sira numara", "case number", "numaram yüksek", "sıram yüksek",
+        "süre kısıtlı", "zaman kısıtlı", "yetişir mi", "kcc", "kccdv", "mail at",
+        "e-posta at", "onlara ne yaz", "dilekçe", "2nl gelmedi", "current oldu",
+        "mali yıl sonu", "30 eylül", "221g", "221(g)", "idari işlem",
+    )
+    if any(w in ql for w in action_words):
+        return True
+    extracted = extract_profile_facts(q)
+    if extracted.get("case_number"):
+        return True
+    return False
+
+
 # ============================================================================
 # KİŞİSEL KOÇ & STRATEJİK DANIŞMAN MOTORU
 # ============================================================================
@@ -488,6 +513,15 @@ def answer_user_question(question: str, profile: Dict[str, Any], force_web: bool
     perspective = is_perspective_question(question)
     gc_relevant = is_gc_process_query(question, history)
     personal_relevant = is_personal_progress_query(question, history)
+    case_action_relevant = is_case_or_kcc_action_query(question, profile)
+
+    # Eğer mesajda yeni bir Case Number geçiyorsa anında yakala
+    inline_facts = extract_profile_facts(question)
+    if inline_facts.get("case_number"):
+        profile.setdefault("user_facts", {})["case_number"] = inline_facts["case_number"]
+
+    case_no = (profile.get("user_facts", {}).get("case_number") or "").strip()
+    case_analysis = analyze_case_number(case_no, profile) if case_no else None
 
     web_result = None
     evidence = ""
@@ -545,6 +579,22 @@ def answer_user_question(question: str, profile: Dict[str, Any], force_web: bool
                     "═══════════════════════════════════════════════════════════════"
                 )
 
+            if case_analysis and case_analysis.get("valid") and (case_action_relevant or personal_relevant):
+                kcc_mail = case_analysis["kcc_email"]
+                prompt_parts.append(
+                    "═══════════════════════════════════════════════════════════════\n"
+                    "🔢 [PROAKTİF SIRA NUMARASI SENARYOLARI VE HAZIR KCC MAİL TASLAĞI]\n"
+                    f"Kullanıcının Case Number'ı: {case_analysis['raw']} (Sıra: #{case_analysis['rank']:,} - {case_analysis['tier']})\n"
+                    f"Tahmini Mülakat Penceresi: {case_analysis['projected_period']}\n"
+                    "Olası Senaryolar:\n- " + "\n- ".join(case_analysis.get("scenarios", [])) + "\n"
+                    "Hemen Alınacak Aksiyonlar:\n- " + "\n- ".join(case_analysis.get("immediate_actions", [])) + "\n\n"
+                    "⚡ PROAKTİF ASİSTAN TALİMATI: Kullanıcının yerine düşün! Olası senaryoları netçe anlat ve "
+                    "'Hemen aksiyon alabilmemiz için KCC'ye mail atabiliriz, onlara şu şekilde söyleyelim:' diyerek "
+                    "aşağıdaki İngilizce e-posta taslağını yanıtının içine doğrudan ekle:\n"
+                    f"To: {kcc_mail['to']}\nSubject: {kcc_mail['subject']}\n{kcc_mail['body']}\n"
+                    "═══════════════════════════════════════════════════════════════"
+                )
+
             if personal_relevant:
                 prompt_parts.append(f"📋 [KULLANICININ HAZIRLIK PROFİLİ]\n{build_user_context_summary(profile)}\n")
 
@@ -561,8 +611,9 @@ def answer_user_question(question: str, profile: Dict[str, Any], force_web: bool
                 "2. TEKRARLAYAN SELAMLAMALARI BIRAK:\n"
                 "   - Kullanıcıyla zaten konuşuyorsun! Her mesaja sanki ilk kez tanışıyormuş gibi 'Merhaba!', 'Harika bir soru!' gibi kalıplarla başlama.\n"
                 "   - Doğrudan konunun içine girerek, gerçek bir insan akıl hocası gibi samimi, akıcı ve kesintisiz yanıt ver.\n"
-                "3. KİŞİSEL KOÇLUK & STRATEJİK DEĞERLENDİRME:\n"
-                "   - Kendi analizini, tavsiyeni ('Senin yerinde olsam...') ve artıları/eksileri netçe sun.\n"
+                "3. KİŞİSEL KOÇLUK & PROAKTİF AKSİYON PLANLAMA:\n"
+                "   - Kullanıcının yerine düşün, olası senaryoları (A, B, C planlarını) hazırla.\n"
+                "   - Eğer sıra numarası yüksekse, süre kısıtlıysa veya resmi bir adım gerekiyorsa 'Hemen aksiyon alabilmemiz için KCC'ye / Konsolosluğa şu maili atabiliriz, onlara şu şekilde söyleyelim' diyerek hazır İngilizce taslak ver.\n"
                 "   - Kullanıcı genel bir konu sorduysa ZORLA Green Card ödevleri veya checklist eksikleri dayatma."
             )
             full_prompt = "\n".join(prompt_parts)
@@ -583,6 +634,11 @@ def answer_user_question(question: str, profile: Dict[str, Any], force_web: bool
                 return content + (links if links else "")
         except Exception as exc:
             logger.warning("Gemini koç yanıtı üretilemedi: %s (kod: %s)", type(exc).__name__, error_code(exc))
+
+    if case_action_relevant:
+        if case_analysis and case_analysis.get("valid"):
+            return format_case_analysis(case_analysis, profile)
+        return build_proactive_action_plan(profile)
 
     if perspective and web_result:
         return perspective_digest(web_result)
@@ -732,12 +788,38 @@ async def safe_edit_response(message, answer: str, reply_markup=None) -> None:
 
 
 # ============================================================================
-# PROAKTİF GÜNLÜK KOÇLUK MESAJI ÜRETİCİSİ
+# PROAKTİF GÜNLÜK KOÇLUK MESAJI & GEMINI TEKİL YORUM YARDIMCISI
 # ============================================================================
 
-def generate_daily_coaching_brief(profile: Dict[str, Any], headlines=None) -> str:
-    from coach_core import digest
-    return digest(profile, CHECKLIST_ITEMS, datetime.now(TZ_TR), headlines)
+def _run_coach_gemini_snippet(prompt: str, temperature: float = 0.5) -> Optional[str]:
+    """Safely run a short Gemini reasoning prompt when API key is configured; return None on unavailability."""
+    if not (HAS_GENAI and GEMINI_API_KEY):
+        return None
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response, _selected = generate_with_fallback(
+            client=client,
+            preferred=GEMINI_MODEL,
+            contents=prompt,
+            config=genai_types.GenerateContentConfig(
+                system_instruction=UNRESTRICTED_COACH_SYSTEM_PROMPT,
+                safety_settings=get_coach_safety_settings(),
+                temperature=temperature,
+            ),
+        )
+        return response.text.strip() if (response and response.text) else None
+    except Exception as exc:
+        logger.warning("Gemini yardımcı analiz hatası: %s", type(exc).__name__)
+        return None
+
+
+def generate_daily_coaching_brief(
+    profile: Dict[str, Any],
+    headlines=None,
+    use_ai_news: bool = False,
+) -> str:
+    ai_fn = _run_coach_gemini_snippet if (use_ai_news and HAS_GENAI and GEMINI_API_KEY) else None
+    return digest(profile, CHECKLIST_ITEMS, datetime.now(TZ_TR), headlines, ai_callable=ai_fn)
 
 
 # ============================================================================
@@ -747,31 +829,136 @@ def generate_daily_coaching_brief(profile: Dict[str, Any], headlines=None) -> st
 def build_main_menu_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
-            InlineKeyboardButton("📡 Canlı Durum & Haberler", callback_data="menu_status"),
+            InlineKeyboardButton("🧠 Benim Yerine Düşün (Aksiyon Planı)", callback_data="menu_aksiyon"),
+        ],
+        [
+            InlineKeyboardButton("⚖️ Mahkeme & Temyiz Analizi", callback_data="menu_mahkeme"),
+            InlineKeyboardButton("🗺️ 360° Tüm Süreç Haritası", callback_data="menu_surec"),
+        ],
+        [
+            InlineKeyboardButton("📡 Canlı Durum & Haber", callback_data="menu_status"),
             InlineKeyboardButton("🧭 5 Fazlı Yol Haritası", callback_data="menu_phases"),
         ],
         [
+            InlineKeyboardButton("📊 360° Hazırlık Karnesi", callback_data="menu_karne"),
             InlineKeyboardButton("✅ 12 Adım Checklist", callback_data="menu_checklist"),
+        ],
+        [
             InlineKeyboardButton("📝 DS-260 Simülatörü", callback_data="menu_ds260"),
+            InlineKeyboardButton("🎯 Konsolosluk Mülakatı", callback_data="menu_interview"),
         ],
         [
-            InlineKeyboardButton("🎯 Canlı Mülakat Provası", callback_data="menu_interview"),
             InlineKeyboardButton("📸 Fotoğraf & Pasaport Testi", callback_data="menu_validator"),
+            InlineKeyboardButton("💵 Yaşam Maliyeti & Runway", callback_data="menu_hesapla"),
         ],
         [
+            InlineKeyboardButton("🏙️ Eyalet & Şehir Kıyasla", callback_data="menu_eyalet"),
+            InlineKeyboardButton("🔢 Case Number & KCC Maili", callback_data="menu_case"),
+        ],
+        [
+            InlineKeyboardButton("🚀 Alternatif Vizeler (B Planı)", callback_data="menu_vize_rotalari"),
+            InlineKeyboardButton("🏛️ 360° ABD Vize Danışmanı", callback_data="menu_vize_analiz"),
+        ],
+        [
+            InlineKeyboardButton("✈️ Dosya Taşıma & Dilekçe", callback_data="menu_transfer"),
+            InlineKeyboardButton("📰 Günün 2 Haberi & Senaryo", callback_data="menu_haber_analiz"),
+        ],
+        [
+            InlineKeyboardButton("📖 Göçmenlik Sözlüğü", callback_data="menu_sozluk"),
             InlineKeyboardButton("⏳ Kritik Takvim", callback_data="menu_calendar"),
-            InlineKeyboardButton("🔐 Onay Numarası Kaydet", callback_data="menu_confno"),
         ],
         [
-            InlineKeyboardButton("🔎 Web Kaynaklarında Ara", callback_data="menu_websearch"),
             InlineKeyboardButton("💬 Hukukçu & Forum Görüşleri", callback_data="menu_opinions"),
+            InlineKeyboardButton("👤 Profilim & Akıllı Hafıza", callback_data="menu_profile"),
         ],
         [
-            InlineKeyboardButton("👤 Profilim & Akıllı Hafıza", callback_data="menu_profile"),
             InlineKeyboardButton("🧹 Sohbet Hafızasını Temizle", callback_data="menu_clearmemory"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def build_case_actions_keyboard() -> InlineKeyboardMarkup:
+    """Interactive action & KCC/Embassy official email buttons for Case Number & Proactive Strategy."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("📧 KCC Dosya Hazırlık Maili", callback_data="case_mail:kcc_status"),
+                InlineKeyboardButton("🚨 Dar Takvim Acil Mülakat Maili", callback_data="case_mail:urgent_embassy"),
+            ],
+            [
+                InlineKeyboardButton("✈️ Başka Ülkeye Dosya Taşıma", callback_data="case_mail:transfer"),
+                InlineKeyboardButton("🔓 DS-260 Kilit Açma (Unlock)", callback_data="case_mail:unlock"),
+            ],
+            [
+                InlineKeyboardButton("🛡️ 221(g) İdari İşlem Takip Maili", callback_data="case_mail:ap_221g"),
+                InlineKeyboardButton("💵 Public Charge Finansal Özeti", callback_data="case_mail:public_charge"),
+            ],
+            [
+                InlineKeyboardButton("🧠 360° Benim Yerine Düşün (Eylem Planı)", callback_data="menu_aksiyon"),
+            ],
+            [InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")],
+        ]
+    )
+
+
+def build_states_keyboard() -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton("🤠 Texas", callback_data="state_view:texas"),
+            InlineKeyboardButton("🌉 California", callback_data="state_view:california"),
+        ],
+        [
+            InlineKeyboardButton("🌴 Florida", callback_data="state_view:florida"),
+            InlineKeyboardButton("🌲 Washington", callback_data="state_view:washington"),
+        ],
+        [
+            InlineKeyboardButton("🌳 North Carolina", callback_data="state_view:north_carolina"),
+            InlineKeyboardButton("🗽 New York", callback_data="state_view:new_york"),
+        ],
+        [
+            InlineKeyboardButton("⚖️ Texas vs California", callback_data="state_comp:texas:california"),
+            InlineKeyboardButton("⚖️ Texas vs Washington", callback_data="state_comp:texas:washington"),
+        ],
+        [InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")],
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_calc_keyboard() -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton("🤠 Texas Hesapla", callback_data="calc_quick:texas"),
+            InlineKeyboardButton("🌴 Florida Hesapla", callback_data="calc_quick:florida"),
+        ],
+        [
+            InlineKeyboardButton("🌉 California Hesapla", callback_data="calc_quick:california"),
+            InlineKeyboardButton("🌲 Washington Hesapla", callback_data="calc_quick:washington"),
+        ],
+        [
+            InlineKeyboardButton("🌳 North Carolina", callback_data="calc_quick:north_carolina"),
+            InlineKeyboardButton("🗽 New York", callback_data="calc_quick:new_york"),
+        ],
+        [InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")],
+    ]
+    return InlineKeyboardMarkup(buttons)
+
+
+def build_glossary_keyboard() -> InlineKeyboardMarkup:
+    buttons = [
+        [
+            InlineKeyboardButton("CEAC", callback_data="glossary:ceac"),
+            InlineKeyboardButton("2NL Mektubu", callback_data="glossary:2nl"),
+            InlineKeyboardButton("Public Charge", callback_data="glossary:public charge"),
+        ],
+        [
+            InlineKeyboardButton("221(g) İdari İşlem", callback_data="glossary:221g"),
+            InlineKeyboardButton("DS-260 Formu", callback_data="glossary:ds-260"),
+            InlineKeyboardButton("USCIS Harcı", callback_data="glossary:uscis fee"),
+        ],
+        [InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")],
+    ]
+    return InlineKeyboardMarkup(buttons)
 
 
 def build_phases_keyboard() -> InlineKeyboardMarkup:
@@ -858,8 +1045,24 @@ def build_ds260_view(profile: Dict[str, Any]) -> tuple[str, InlineKeyboardMarkup
             row = []
     if row:
         buttons.append(row)
+    buttons.append([InlineKeyboardButton("🔍 3 Göz Kuralı: Tutarlılık & Risk Denetimi", callback_data="ds260_audit")])
     buttons.append([InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")])
     return "\n".join(lines), InlineKeyboardMarkup(buttons)
+
+
+def build_transfer_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("🔓 DS-260 Unlock Dilekçesi", callback_data="transfer_tmpl:unlock"),
+                InlineKeyboardButton("✈️ Konsolosluk Transfer Taslağı", callback_data="transfer_tmpl:transfer"),
+            ],
+            [
+                InlineKeyboardButton("⚡ B1/B2 / F-1 Acil Randevu", callback_data="transfer_tmpl:expedited"),
+            ],
+            [InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")],
+        ]
+    )
 
 
 # ============================================================================
@@ -877,15 +1080,24 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else "🟡 GEMINI_API_KEY Bekleniyor (/ai_durum)"
     )
     welcome_text = (
-        "🇺🇸 *Sınırsız Kişisel Koçunuz & 360° Süreç Yöneticinize Hoş Geldiniz!*\n\n"
+        "🇺🇸 *Sınırsız Kişisel Koçunuz & 360° Green Card Danışmanınıza Hoş Geldiniz!*\n\n"
         f"🧠 *Danışman Motoru:* {ai_badge}\n\n"
-        "Artık hiçbir yapay sınır veya kalıp olmadan, tamamen sizin lehinize düşünen stratejik akıl hocanızım:\n"
-        "• 💬 *Kısıtlamasız Koçluk & Stratejik Yorum:* Green Card sürecinin yanı sıra ABD'de yaşam, eyalet/şehir seçimi, iş piyasası, maaşlar, kira, kariyer planı, İngilizce gelişimi, alternatif vizeler veya kişisel kararlarınızı bana sorabilirsiniz. Sadece kuru bilgi vermekle kalmaz, 'Senin yerinde olsam şöyle yapardım' diyerek kendi stratejik değerlendirmemi sunarım.\n"
-        "• 🧠 *Çoklu Sohbet Hafızası:* Konuşmalarımızın bağlamını hatırlarım (`/hafiza_temizle` ile sıfırlayabilirsiniz).\n"
-        "• 👤 *Akıllı Profil Hafızası:* Mesleğinizi, ailenizi, hedef eyaletinizi ve bütçenizi hatırlarım (`/profilim`, `/profil`). Tavsiyelerimi doğrudan profilinize özel hazırlarım.\n"
-        "• 🧭 *Süreç Araçları:* 12 Adımlı Checklist (`/checklist`), DS-260 Simülatörü (`/ds260`), Canlı Mülakat Provası (`/mulakat`), Fotoğraf & Pasaport Testi (`/fotograf`) ve Günlük Plan (`/bugun`).\n"
-        "• 🔎 *Görüş ve Haber Taraması:* Canlı araştırma (`/ara`), Hukukçu & forum görüşleri (`/yorumlar`).\n\n"
-        "👇 *Menüden bir işlem seçebilir veya merak ettiğiniz her şeyi doğrudan mesaj olarak yazabilirsiniz:*"
+        "Senin adına her ayrıntıyı düşünen, riskleri önceden sezen ve tüm göçmenlik stratejini yöneten kişisel akıl hocanım:\n"
+        "• 💬 *İnsan Sıcaklığı & Stratejik Danışmanlık:* Green Card, mahkeme süreci, ABD'de yaşam, eyalet seçimi, maaşlar, ev kiraları, kariyer veya B planı vizeler (EB-2 NIW vb.) hakkında benimle dilediğin gibi sohbet edebilirsin. Kuru bilgi değil, 'Senin yerinde olsaydım şöyle yapardım' diyerek net fikir veririm.\n"
+        "• ⚖️ *Mahkeme & Takvim Stratejisi:* `/mahkeme` (Ninth Circuit temyiz kararı, portal açılış olasılıkları ve 3 takvim senaryosu).\n"
+        "• 🗺️ *360° Yaşam Döngüsü:* `/surec` (İlk başvurudan ABD'de ilk 90 güne kadar 10 aşamalı rehber).\n"
+        "• ✈️ *Dosya Taşıma & Dilekçe:* `/dosya_tasima` (Güncel oturum şartı, KCC vs Konsolosluk ve İngilizce resmi dilekçe).\n"
+        "• 🏛️ *360° Amerikan Vize Danışmanı:* `/vize_analiz` (DV, EB-2 NIW, O-1, E-2, F-1, B1/B2 214b profil analizi).\n"
+        "• 📰 *Günün 2 Haberi & Senaryo Analizi:* `/haber_analiz` ve `/bugun` (Güncel 2 haber üzerine 'bu şekilde olabilir, hazır olmalıyız' yorumu).\n"
+        "• 📊 *Hazırlık & Risk Karnesi:* `/karne` (100 üzerinden puanlama ve en acil 3 eylem adımı).\n"
+        "• 💵 *Yaşam Maliyeti & Runway:* `/hesapla` (Taşınma masrafları ve birikiminizin kaç ay yeteceği analizi).\n"
+        "• 🏙️ *Eyalet Kıyaslama:* `/eyalet` (Texas, California, Florida, Washington, New York vergi ve maaş karşılaştırması).\n"
+        "• 🔢 *Case Number & KCC Proaktif Aksiyon:* `/case` (Sıra numarası senaryoları, dar takvim önlemleri ve KCC'ye 'onlara şu şekilde söyleyelim' hazır İngilizce maili).\n"
+        "• 🧠 *Benim Yerine Düşün:* `/aksiyon` (Sıra numarası, meslek, bütçe ve DS-260 durumuna göre olası senaryolar ve hazır resmi mailler).\n"
+        "• 🚀 *Alternatif Vizeler:* `/vize_rotalari` (Şirketsiz doğrudan Green Card EB-2 NIW ve diğer rotalar).\n"
+        "• 🧠 *Derin Sohbet & Profil Hafızası:* Mesleğini, bütçeni, aileni ve önceki konuşmalarımızı hatırlarım (`/profilim`, `/hafiza_temizle`).\n"
+        "• 📸 *Fotoğraf & Pasaport Testi:* `/fotograf` (600x600 px, sRGB, arka plan aydınlığı ve JPEG denetimi).\n\n"
+        "👇 *Menüden bir işlem seçebilir veya aklına gelen her şeyi doğrudan bir dosta danışır gibi yazabilirsin:*"
     )
     await update.message.reply_text(
         welcome_text,
@@ -971,13 +1183,230 @@ async def cmd_profil(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
+async def cmd_karne(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    audit = generate_readiness_audit(profile)
+    report = format_audit_report(audit)
+    await update.message.reply_text(
+        report,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_main_menu_keyboard(),
+    )
+
+
+async def cmd_hesapla(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    facts = profile.get("user_facts", {})
+    args = context.args or []
+
+    budget_input = args[0] if len(args) >= 1 else facts.get("butce", "20000")
+    state_input = args[1] if len(args) >= 2 else facts.get("hedef_lokasyon", "texas")
+    is_fam = "evli" in facts.get("medeni_durum", "").lower() or "çocuk" in facts.get("medeni_durum", "").lower()
+
+    calc = calculate_relocation_budget(budget_input, state_input, is_family=is_fam)
+    report = format_runway_report(calc)
+    await update.message.reply_text(
+        report,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_calc_keyboard(),
+    )
+
+
+async def cmd_eyalet(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    args = context.args or []
+    if len(args) >= 2:
+        text = compare_states(args[0], args[1])
+    elif len(args) == 1:
+        prof = get_state_profile(args[0])
+        if prof:
+            text = (
+                f"🏙️ *{prof['title']} Detaylı Eyalet Analizi*\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🏛️ *Gelir Vergisi:* {prof['income_tax']}\n"
+                f"🛍️ *Satış Vergisi:* {prof['sales_tax']}\n"
+                f"🏠 *Ortalama 1+1 Kira:* {prof['rent_1br']}\n"
+                f"💻 *Tech / Yazılım Maaşı:* {prof['tech_salary']}\n"
+                f"🩺 *Sağlık / Hemşire Maaşı:* {prof['nurse_salary']}\n"
+                f"☀️ *İklim:* {prof['climate']}\n"
+                f"🚗 *Araç İhtiyacı:* {prof['car']}\n"
+                f"🇹🇷 *Türk Topluluğu:* {prof['turkish_community']}\n\n"
+                f"🌟 *Artıları:* {prof['pros']}\n"
+                f"⚠️ *Dikkat:* {prof['cons']}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"💡 Başka bir eyaletle kıyaslamak için: `/eyalet {args[0]} california`"
+            )
+        else:
+            text = f"'{args[0]}' bulunamadı. Kullanılabilir eyaletler: `texas`, `california`, `florida`, `washington`, `north_carolina`, `new_york`."
+    else:
+        text = (
+            "🏙️ *ABD Eyalet & Şehir Karşılaştırma Rehberi*\n\n"
+            "Hangi eyalete yerleşeceğinizi belirlerken vergi, kira, iş imkanları ve Türk nüfusu açısından analiz etmek istediğiniz eyaleti seçin veya doğrudan kıyaslayın:\n\n"
+            "• Örnek: `/eyalet texas california` veya `/eyalet washington`"
+        )
+
+    await update.message.reply_text(
+        text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_states_keyboard(),
+    )
+
+
+async def cmd_case(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    facts = profile.get("user_facts", {})
+    args = context.args or []
+    case_val = args[0] if args else facts.get("case_number", "")
+    if not case_val:
+        await update.message.reply_text(
+            "🔢 *DV Case Number, Olası Senaryolar & Hazır KCC Maili*\n\n"
+            "Case numaranızı girdiğinizde senin yerine olası senaryoları (Normal ilerleme, Ankara yoğunluğu, 30 Eylül dar takvim) kurar, "
+            "hemen alacağımız aksiyonları belirler ve *KCC'ye gönderebileceğimiz hazır İngilizce mail taslağını ('Onlara şu şekilde söyleyelim')* üretirim:\n\n"
+            "Kullanım: `/case <numara>`\n"
+            "Örnek: `/case 2027EU00028500` veya `/case EU28500` veya `/case 2027AS3500`\n\n"
+            "_(Bu numara profilinize otomatik kaydedilir ve tüm stratejileriniz buna göre planlanır)_",
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=build_case_actions_keyboard(),
+        )
+        return
+
+    analysis = analyze_case_number(case_val, profile)
+    if analysis.get("valid"):
+        facts["case_number"] = analysis["raw"]
+        save_state(state)
+
+    report = format_case_analysis(analysis, profile)
+    await safe_reply_or_edit(
+        update,
+        report,
+        reply_markup=build_case_actions_keyboard(),
+    )
+
+
+async def cmd_aksiyon(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Proactive 'Think For Me' command synthesizing scenarios, bottlenecks, and ready-to-send KCC/Embassy emails."""
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    report = build_proactive_action_plan(profile)
+    record_chat_turn(profile, "/aksiyon", report)
+    save_state(state)
+    await safe_reply_or_edit(
+        update,
+        report,
+        reply_markup=build_case_actions_keyboard(),
+    )
+
+
+async def cmd_vize_rotalari(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    text = get_visa_routes_guide(profile)
+    await update.message.reply_text(
+        text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_main_menu_keyboard(),
+    )
+
+
+async def cmd_sozluk(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    args = context.args or []
+    query = " ".join(args).strip()
+    text = lookup_glossary(query)
+    await update.message.reply_text(
+        text,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_glossary_keyboard(),
+    )
+
+
+async def cmd_mahkeme(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    facts = profile.get("user_facts", {})
+    report = analyze_court_and_timeline(facts)
+    await update.message.reply_text(
+        report,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_main_menu_keyboard(),
+    )
+
+
+async def cmd_surec(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    guide = get_full_lifecycle_guide()
+    await update.message.reply_text(
+        guide,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=build_main_menu_keyboard(),
+    )
+
+
+async def cmd_dosya_tasima(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    scenario = " ".join(context.args or []).strip()
+    thinking = None
+    if scenario:
+        thinking = await update.message.reply_text("✈️ _Dosya taşıma stratejisi ve İngilizce resmi dilekçe hazırlanıyor..._", parse_mode=ParseMode.MARKDOWN)
+    ai_fn = _run_coach_gemini_snippet if (scenario and HAS_GENAI and GEMINI_API_KEY) else None
+    report = await asyncio.to_thread(
+        analyze_transfer_and_build_letter,
+        scenario,
+        profile,
+        use_ai=bool(ai_fn),
+        ai_callable=ai_fn,
+    )
+    if scenario:
+        record_chat_turn(profile, f"/dosya_tasima {scenario}", report)
+        save_state(state)
+    await safe_reply_or_edit(
+        update,
+        report,
+        thinking_msg=thinking,
+        reply_markup=build_transfer_keyboard(),
+    )
+
+
+async def cmd_vize_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    report = analyze_all_us_visas(profile)
+    await safe_reply_or_edit(
+        update,
+        report,
+        reply_markup=build_main_menu_keyboard(),
+    )
+
+
+async def cmd_haber_analiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    state = load_state()
+    profile = get_user_profile(state, update.effective_chat.id)
+    thinking = await update.message.reply_text("📰 _Günün en güncel 2 haberi çekilip stratejik senaryo analizi yapılıyor..._", parse_mode=ParseMode.MARKDOWN)
+    news = await asyncio.to_thread(fetch_latest_gc_news, 2)
+    ai_fn = _run_coach_gemini_snippet if (HAS_GENAI and GEMINI_API_KEY) else None
+    report = await asyncio.to_thread(analyze_daily_news_scenarios, news, profile, ai_fn)
+    record_chat_turn(profile, "/haber_analiz", report)
+    save_state(state)
+    await safe_reply_or_edit(
+        update,
+        report,
+        thinking_msg=thinking,
+        reply_markup=build_main_menu_keyboard(),
+    )
+
+
 async def cmd_bugun(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     state = load_state()
     profile = get_user_profile(state, update.effective_chat.id)
+    thinking = await update.message.reply_text("☀️ _Günlük planınız ve günün 2 kritik haberi analiz ediliyor..._", parse_mode=ParseMode.MARKDOWN)
     news = await asyncio.to_thread(fetch_latest_gc_news, 2)
-    await update.message.reply_text(
-        generate_daily_coaching_brief(profile, news),
-        disable_web_page_preview=True,
+    brief = await asyncio.to_thread(generate_daily_coaching_brief, profile, news, True)
+    await safe_reply_or_edit(
+        update,
+        brief,
+        thinking_msg=thinking,
+        reply_markup=build_main_menu_keyboard(),
     )
 
 
@@ -1260,6 +1689,145 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         msg += "Başvurunuzu tamamladıktan sonra aldığınız onay numarasını mesaj olarak yazıp kaydedebilirsiniz (İptal için `/iptal`):"
         await query.edit_message_text(msg, parse_mode=ParseMode.MARKDOWN)
+    elif data == "menu_mahkeme":
+        facts = profile.get("user_facts", {})
+        report = analyze_court_and_timeline(facts)
+        await safe_edit_response(query.message, report, reply_markup=build_main_menu_keyboard())
+    elif data == "menu_surec":
+        guide = get_full_lifecycle_guide()
+        await safe_edit_response(query.message, guide, reply_markup=build_main_menu_keyboard())
+    elif data == "menu_karne":
+        audit = generate_readiness_audit(profile)
+        report = format_audit_report(audit)
+        await safe_edit_response(query.message, report, reply_markup=build_main_menu_keyboard())
+    elif data == "menu_hesapla":
+        facts = profile.get("user_facts", {})
+        b = facts.get("butce", "20000")
+        loc = facts.get("hedef_lokasyon", "texas")
+        is_fam = "evli" in facts.get("medeni_durum", "").lower() or "çocuk" in facts.get("medeni_durum", "").lower()
+        calc = calculate_relocation_budget(b, loc, is_family=is_fam)
+        report = format_runway_report(calc)
+        await safe_edit_response(query.message, report, reply_markup=build_calc_keyboard())
+    elif data.startswith("calc_quick:"):
+        st = data.split(":", 1)[1]
+        facts = profile.get("user_facts", {})
+        b = facts.get("butce", "20000")
+        is_fam = "evli" in facts.get("medeni_durum", "").lower() or "çocuk" in facts.get("medeni_durum", "").lower()
+        calc = calculate_relocation_budget(b, st, is_family=is_fam)
+        report = format_runway_report(calc)
+        await safe_edit_response(query.message, report, reply_markup=build_calc_keyboard())
+    elif data == "menu_eyalet":
+        text = (
+            "🏙️ *ABD Eyalet & Şehir Karşılaştırma Rehberi*\n\n"
+            "Detaylı analizini görmek istediğiniz eyaleti seçin veya doğrudan kıyaslayın:\n\n"
+            "_(Ayrıca `/eyalet texas california` komutuyla da dilediğiniz iki eyaleti karşılaştırabilirsiniz)_"
+        )
+        await safe_edit_response(query.message, text, reply_markup=build_states_keyboard())
+    elif data.startswith("state_view:"):
+        st = data.split(":", 1)[1]
+        prof = get_state_profile(st)
+        if prof:
+            text = (
+                f"🏙️ *{prof['title']} Detaylı Eyalet Analizi*\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🏛️ *Gelir Vergisi:* {prof['income_tax']}\n"
+                f"🛍️ *Satış Vergisi:* {prof['sales_tax']}\n"
+                f"🏠 *Ortalama 1+1 Kira:* {prof['rent_1br']}\n"
+                f"💻 *Tech / Yazılım Maaşı:* {prof['tech_salary']}\n"
+                f"🩺 *Sağlık / Hemşire Maaşı:* {prof['nurse_salary']}\n"
+                f"☀️ *İklim:* {prof['climate']}\n"
+                f"🚗 *Araç İhtiyacı:* {prof['car']}\n"
+                f"🇹🇷 *Türk Topluluğu:* {prof['turkish_community']}\n\n"
+                f"🌟 *Artıları:* {prof['pros']}\n"
+                f"⚠️ *Dikkat:* {prof['cons']}\n"
+            )
+        else:
+            text = "Eyalet bulunamadı."
+        buttons = [
+            [InlineKeyboardButton("⚖️ California ile Kıyasla", callback_data=f"state_comp:{st}:california")],
+            [InlineKeyboardButton("🔙 Eyaletler Listesi", callback_data="menu_eyalet")],
+            [InlineKeyboardButton("🏠 Ana Menü", callback_data="menu_main")],
+        ]
+        await safe_edit_response(query.message, text, reply_markup=InlineKeyboardMarkup(buttons))
+    elif data.startswith("state_comp:"):
+        parts = data.split(":")
+        s1 = parts[1] if len(parts) > 1 else "texas"
+        s2 = parts[2] if len(parts) > 2 else "california"
+        text = compare_states(s1, s2)
+        buttons = [
+            [InlineKeyboardButton("🔙 Eyaletler Listesi", callback_data="menu_eyalet")],
+            [InlineKeyboardButton("🏠 Ana Menü", callback_data="menu_main")],
+        ]
+        await safe_edit_response(query.message, text, reply_markup=InlineKeyboardMarkup(buttons))
+    elif data == "menu_case":
+        facts = profile.get("user_facts", {})
+        case_val = facts.get("case_number", "")
+        if case_val:
+            analysis = analyze_case_number(case_val, profile)
+            report = format_case_analysis(analysis, profile)
+        else:
+            report = (
+                "🔢 *DV Case Number, Olası Senaryolar & KCC Aksiyon Planı*\n\n"
+                "Henüz kayıtlı bir Case Number'ınız yok.\n"
+                "Sıra numaranızı girdiğinizde olası senaryoları, dar takvim önlemlerini ve *KCC'ye hemen gönderebileceğimiz hazır İngilizce e-posta taslağını* çıkarırım:\n"
+                "`/case 2027EU00028500` veya doğrudan sohbete `Sıra numaram EU28500` yazabilirsiniz.\n\n"
+                "Aşağıdaki butonlardan tüm resmi KCC / Konsolosluk mail taslaklarına hemen ulaşabilirsiniz:"
+            )
+        await safe_edit_response(query.message, report, reply_markup=build_case_actions_keyboard())
+    elif data == "menu_aksiyon":
+        report = build_proactive_action_plan(profile)
+        await safe_edit_response(query.message, report, reply_markup=build_case_actions_keyboard())
+    elif data.startswith("case_mail:"):
+        mail_kind = data.split(":", 1)[1]
+        report = generate_proactive_case_emails(mail_kind, profile)
+        await safe_edit_response(query.message, report, reply_markup=build_case_actions_keyboard())
+    elif data == "menu_vize_rotalari":
+        text = get_visa_routes_guide(profile)
+        await safe_edit_response(query.message, text, reply_markup=build_main_menu_keyboard())
+    elif data == "menu_sozluk":
+        text = lookup_glossary("")
+        await safe_edit_response(query.message, text, reply_markup=build_glossary_keyboard())
+    elif data.startswith("glossary:"):
+        term = data.split(":", 1)[1]
+        text = lookup_glossary(term)
+        buttons = [
+            [InlineKeyboardButton("📖 Tüm Sözlük", callback_data="menu_sozluk")],
+            [InlineKeyboardButton("🔙 Ana Menü", callback_data="menu_main")],
+        ]
+        await safe_edit_response(query.message, text, reply_markup=InlineKeyboardMarkup(buttons))
+    elif data == "ds260_audit":
+        await query.edit_message_text("🔍 _DS-260 '3 Göz Kuralı' tutarlılık ve 221(g) risk taraması yapılıyor..._", parse_mode=ParseMode.MARKDOWN)
+        ai_fn = _run_coach_gemini_snippet if (HAS_GENAI and GEMINI_API_KEY) else None
+        report = await asyncio.to_thread(audit_ds260_consistency, profile, DS260_FIELDS, ai_fn)
+        buttons = [
+            [InlineKeyboardButton("📝 DS-260 Düzenle", callback_data="menu_ds260")],
+            [InlineKeyboardButton("🏠 Ana Menü", callback_data="menu_main")],
+        ]
+        await safe_edit_response(query.message, report, reply_markup=InlineKeyboardMarkup(buttons))
+    elif data == "menu_transfer":
+        text = analyze_transfer_and_build_letter("", profile)
+        await safe_edit_response(query.message, text, reply_markup=build_transfer_keyboard())
+    elif data.startswith("transfer_tmpl:"):
+        kind = data.split(":", 1)[1]
+        scenario_map = {
+            "unlock": "DS-260 formumun kilidini açıp adres ve konsolosluk bilgisini güncellemek istiyorum",
+            "transfer": "Hedef ülkede yasal oturum iznim bulunuyor, dosyamı bu konsolosluğa taşımak istiyorum",
+            "expedited": "F-1 okul başlangıcı veya acil iş/tıbbi gerekçeyle B1/B2/F-1 acil randevu talep ediyorum",
+        }
+        sc = scenario_map.get(kind, "Dosya taşıma talebi")
+        report = analyze_transfer_and_build_letter(sc, profile)
+        await safe_edit_response(query.message, report, reply_markup=build_transfer_keyboard())
+    elif data == "menu_vize_analiz":
+        report = analyze_all_us_visas(profile)
+        await safe_edit_response(query.message, report, reply_markup=build_main_menu_keyboard())
+    elif data == "menu_haber_analiz":
+        await query.edit_message_text("📰 _Günün 2 güncel haberi çekilip 'bu şekilde olabilir, hazır olmalıyız' senaryosu kuruluyor..._", parse_mode=ParseMode.MARKDOWN)
+        news = await asyncio.to_thread(fetch_latest_gc_news, 2)
+        ai_fn = _run_coach_gemini_snippet if (HAS_GENAI and GEMINI_API_KEY) else None
+        report = await asyncio.to_thread(analyze_daily_news_scenarios, news, profile, ai_fn)
+        record_chat_turn(profile, "Günün 2 haberi stratejik yorumu", report)
+        save_state(state)
+        await safe_edit_response(query.message, report, reply_markup=build_main_menu_keyboard())
 
 
 # ============================================================================
@@ -1274,7 +1842,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     file_name = (doc.file_name or "dosya").lower()
     file_size_bytes = doc.file_size or 0
     file_size_kb = file_size_bytes / 1024.0
-    file_size_mb = file_size_kb / 1024.0
 
     if file_name.endswith(".pdf") or doc.mime_type == "application/pdf":
         await update.message.reply_text(
@@ -1289,77 +1856,68 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         tg_file = await doc.get_file()
         bio = io.BytesIO()
         await tg_file.download_to_memory(out=bio)
-        bio.seek(0)
-        img = Image.open(bio)
+        raw_bytes = bio.getvalue()
+        img = Image.open(io.BytesIO(raw_bytes))
         width, height = img.size
-        img_format = (img.format or "").upper()
     except Exception as exc:
         await update.message.reply_text(
             f"⚠️ Gönderdiğiniz dosya görüntü olarak okunamadı ({exc}). Lütfen `.jpg` / `.jpeg` formatında gönderin."
         )
         return
 
-    is_jpeg = img_format in ("JPEG", "JPG", "JFIF")
     state = load_state()
     profile = get_user_profile(state, update.effective_chat.id)
 
+    # Kareye yakınsa veya dosya adı foto/photo içeriyorsa biyometrik fotoğraf olarak doğrula
     if width == height or "foto" in file_name or "photo" in file_name or file_size_kb <= 350:
-        checks = [
-            ("JPEG/JFIF Formatı", is_jpeg, f"Format: {img_format} (JPEG olmalı)"),
-            ("600x600 Piksel Kare Boyut", width == 600 and height == 600, f"Mevcut: {width}x{height} px (600x600 olmalı)"),
-            ("Maksimum 240 KB Dosya Boyutu", file_size_kb <= 240, f"Mevcut: {file_size_kb:.1f} KB (<= 240 KB olmalı)"),
-        ]
-        all_ok = all(ok for _, ok, _ in checks)
-        lines = ["📸 *Biyometrik Fotoğraf Teknik Kontrol Sonucu:*\n"]
-        for label, ok, detail in checks:
-            icon = "✅" if ok else "❌"
-            lines.append(f"{icon} *{label}:* {detail}")
-
-        if all_ok:
+        result = validate_biometric_photo(raw_bytes, file_name)
+        if result["valid"]:
             profile["checklist"]["photo_taken"] = True
             profile["checklist"]["photo_tested"] = True
             save_state(state)
-            lines.append(
-                "\n🎉 *Tebrikler!* Fotoğrafınız tüm teknik kriterleri sağlıyor ve Checklist'inizde işaretlendi!\n"
-                "⚠️ *Son Manuel Kontrol:* Gözlük olmamalı, arka plan düz beyaz/açık olmalı ve son 6 ayda çekilmiş olmalıdır."
-            )
-        else:
-            lines.append(
-                "\n🛠️ *Nasıl Düzeltilir?*\n"
-                "Fotoğrafınızı [ABD Dışişleri Resmi Photo Tool](https://tsg.phototool.state.gov/photo) aracına yükleyerek otomatik olarak 600x600 piksele kırpabilir ve buraya tekrar gönderebilirsiniz."
-            )
         await update.message.reply_text(
-            "\n".join(lines),
+            result["formatted_report"],
             parse_mode=ParseMode.MARKDOWN,
             disable_web_page_preview=True,
         )
         return
 
-    checks = [
-        ("JPEG/JFIF Formatı (PDF Değil)", is_jpeg, f"Format: {img_format}"),
-        ("Maksimum 5 MB Dosya Boyutu", file_size_mb <= 5.0, f"Mevcut: {file_size_mb:.2f} MB (<= 5 MB olmalı)"),
-        ("Okunabilir Çözünürlük (>= 600 px)", width >= 600 and height >= 600, f"Mevcut: {width}x{height} px"),
-    ]
-    all_ok = all(ok for _, ok, _ in checks)
-    lines = ["🛂 *Pasaport Kimlik & İmza Sayfası Tarama Kontrolü:*\n"]
-    for label, ok, detail in checks:
-        icon = "✅" if ok else "❌"
-        lines.append(f"{icon} *{label}:* {detail}")
-
-    if all_ok:
+    # Pasaport Taraması Doğrulaması
+    result = validate_passport_scan(raw_bytes, file_name)
+    if result["valid"]:
         profile["checklist"]["passport_scan"] = True
         save_state(state)
-        lines.append(
-            "\n🎉 *Harika!* Pasaport taramanız yükleme kriterlerine uygun ve Checklist'inizde işaretlendi."
-        )
-    await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.MARKDOWN)
+    await update.message.reply_text(
+        result["formatted_report"],
+        parse_mode=ParseMode.MARKDOWN,
+        disable_web_page_preview=True,
+    )
 
 
 async def handle_photo_compressed(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        photo = update.message.photo[-1]
+        tg_file = await photo.get_file()
+        bio = io.BytesIO()
+        await tg_file.download_to_memory(out=bio)
+        raw_bytes = bio.getvalue()
+        result = validate_biometric_photo(raw_bytes, "compressed_photo.jpg")
+        text = (
+            "ℹ️ *Önemli İpucu:* Fotoğrafı normal resim olarak gönderdiğiniz için Telegram otomatik sıkıştırdı.\n"
+            "Yine de genel oran ve aydınlık ön-analizini gerçekleştirdim:\n\n"
+            f"{result['formatted_report']}\n\n"
+            "⚠️ *Resmi Kayıt Uyarısı:* DV sistemine yüklerken tam 600x600 piksel ve <=240 KB şarttır. "
+            "Kesin piksel kontrolü için lütfen fotoğrafı *Ataş (📎) -> Dosya (Document)* olarak gönderin!"
+        )
+    except Exception:
+        text = (
+            "ℹ️ *Önemli İpucu:* Telegram normal fotoğrafları otomatik sıkıştırır.\n\n"
+            "Piksel ve dosya boyutunu hatasız test edebilmem için lütfen fotoğrafı *Ataş (📎) -> Dosya (Document)* olarak gönderin!"
+        )
     await update.message.reply_text(
-        "ℹ️ *Önemli İpucu:* Telegram normal fotoğrafları otomatik sıkıştırır.\n\n"
-        "Piksel ve dosya boyutunu hatasız test edebilmem için lütfen fotoğrafı *Ataş (📎) -> Dosya (Document)* olarak gönderin!",
+        text,
         parse_mode=ParseMode.MARKDOWN,
+        disable_web_page_preview=True,
     )
 
 
@@ -1451,11 +2009,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     record_chat_turn(profile, text, reply)
     save_state(state)
 
+    use_case_kb = bool(extracted.get("case_number")) or is_case_or_kcc_action_query(text, profile)
     await safe_reply_or_edit(
         update,
         reply,
         thinking_msg=thinking_msg,
-        reply_markup=build_main_menu_keyboard(),
+        reply_markup=build_case_actions_keyboard() if use_case_kb else build_main_menu_keyboard(),
     )
 
 
@@ -1494,19 +2053,29 @@ async def run_monitoring_cycle(bot) -> None:
         try:
             profile = get_user_profile(state, chat_id)
             if changes:
-                lines = ["📰 *Green Card Süreciyle İlgili Yeni Gelişme!*"]
-                for item in changes[:2]:
-                    lines.append(f"• [{item['title'][:140]}]({item['link'][:300]})")
+                ai_fn = _run_coach_gemini_snippet if (HAS_GENAI and GEMINI_API_KEY) else None
+                analysis_msg = await asyncio.to_thread(
+                    analyze_daily_news_scenarios,
+                    changes[:2],
+                    profile,
+                    ai_fn,
+                )
                 await bot.send_message(
                     chat_id=chat_id,
-                    text="\n".join(lines),
+                    text=analysis_msg[:3900],
                     parse_mode=ParseMode.MARKDOWN,
                     disable_web_page_preview=True,
                 )
             if due(profile, day, now.hour):
+                daily_msg = await asyncio.to_thread(
+                    generate_daily_coaching_brief,
+                    profile,
+                    news[:2],
+                    True,
+                )
                 await bot.send_message(
                     chat_id=chat_id,
-                    text=generate_daily_coaching_brief(profile, news),
+                    text=daily_msg,
                     disable_web_page_preview=True,
                 )
                 profile["last_daily_digest"] = day
@@ -1540,6 +2109,43 @@ async def on_bot_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> No
 # ANA ÇALIŞTIRICI (BULUT WEBHOOK VEYA YEREL POLLING)
 # ============================================================================
 
+async def post_init(application: Application) -> None:
+    """Register rich command menu in Telegram UI."""
+    try:
+        from telegram import BotCommand
+        commands = [
+            BotCommand("start", "Ana menü ve botu başlat"),
+            BotCommand("aksiyon", "Benim Yerine Düşün: Senaryo & KCC Aksiyon Planı"),
+            BotCommand("case", "Case Number Senaryoları & Hazır KCC Maili"),
+            BotCommand("haber_analiz", "Günün 2 Haberi: Senaryo & Hazırlık Yorumu"),
+            BotCommand("dosya_tasima", "Dosya Taşıma Stratejisi & İngilizce Dilekçe"),
+            BotCommand("vize_analiz", "360° Amerikan Vizesi Uygunluk Analizi"),
+            BotCommand("mahkeme", "Mahkeme Durumu, Temyiz & Takvim Analizi"),
+            BotCommand("surec", "360° A'dan Z'ye Green Card Yaşam Döngüsü"),
+            BotCommand("bugun", "Günlük kişisel adımlar ve 2 haber yorumu"),
+            BotCommand("karne", "360° Hazırlık & DS-260 Risk Karnesi (Puan)"),
+            BotCommand("hesapla", "Taşınma Maliyeti & Runway Hesaplayıcı"),
+            BotCommand("eyalet", "ABD Eyalet & Şehir Kıyaslama Rehberi"),
+            BotCommand("vize_rotalari", "Alternatif Vizeler ve B Planı (EB-2 NIW)"),
+            BotCommand("sozluk", "Green Card & Göçmenlik Terimleri"),
+            BotCommand("mulakat", "Canlı Konsolosluk Mülakat Provası"),
+            BotCommand("fotograf", "Biyometrik Fotoğraf & Pasaport Testi"),
+            BotCommand("profilim", "Kişisel Profil Hafızanızı Görüntüleyin"),
+            BotCommand("profil", "Manuel Profil Bilgisi Güncelleyin"),
+            BotCommand("checklist", "12 Adımlı Hızlandırılmış Kontrol Listesi"),
+            BotCommand("ds260", "DS-5501 & DS-260 Simülatörü + 3 Göz Denetimi"),
+            BotCommand("yorumlar", "Avukat, Reddit ve Forum Analizleri"),
+            BotCommand("ara", "Canlı Web Araştırması"),
+            BotCommand("durum", "Resmî Kaynaklar ve Mahkeme Raporu"),
+            BotCommand("rehber", "5 Fazlı Hızlandırılmış Hazırlık Rehberi"),
+            BotCommand("hafiza_temizle", "Sohbet Hafızasını Temizle"),
+        ]
+        await application.bot.set_my_commands(commands)
+        logger.info("Telegram komut listesi başarıyla kaydedildi.")
+    except Exception as exc:
+        logger.warning("Telegram komut menüsü kaydedilemedi: %s", exc)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Unrestricted Personal Coach & Green Card Manager")
     parser.add_argument(
@@ -1553,7 +2159,7 @@ def main() -> None:
         raise RuntimeError("TELEGRAM_BOT_TOKEN eksik. Lütfen ortam değişkenini tanımlayın.")
 
     logger.info("Bot başlatılıyor: Gemini SDK=%s, API Anahtarı=%s", HAS_GENAI, bool(GEMINI_API_KEY))
-    app: Application = ApplicationBuilder().token(BOT_TOKEN).build()
+    app: Application = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
 
     if args.cron_once:
         asyncio.run(run_monitoring_cycle(app.bot))
@@ -1562,10 +2168,23 @@ def main() -> None:
 
     # Komut Kayıtları
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("aksiyon", cmd_aksiyon))
+    app.add_handler(CommandHandler("strateji", cmd_aksiyon))
+    app.add_handler(CommandHandler("haber_analiz", cmd_haber_analiz))
+    app.add_handler(CommandHandler("dosya_tasima", cmd_dosya_tasima))
+    app.add_handler(CommandHandler("vize_analiz", cmd_vize_analiz))
+    app.add_handler(CommandHandler("mahkeme", cmd_mahkeme))
+    app.add_handler(CommandHandler("surec", cmd_surec))
     app.add_handler(CommandHandler("hafiza_temizle", cmd_clear_memory))
     app.add_handler(CommandHandler("profilim", cmd_profilim))
     app.add_handler(CommandHandler("profil", cmd_profil))
     app.add_handler(CommandHandler("profil_temizle", cmd_profil_temizle))
+    app.add_handler(CommandHandler("karne", cmd_karne))
+    app.add_handler(CommandHandler("hesapla", cmd_hesapla))
+    app.add_handler(CommandHandler("eyalet", cmd_eyalet))
+    app.add_handler(CommandHandler("case", cmd_case))
+    app.add_handler(CommandHandler("vize_rotalari", cmd_vize_rotalari))
+    app.add_handler(CommandHandler("sozluk", cmd_sozluk))
     app.add_handler(CommandHandler("bugun", cmd_bugun))
     app.add_handler(CommandHandler("bildirim_test", cmd_bildirim_test))
     app.add_handler(CommandHandler("id", cmd_id))

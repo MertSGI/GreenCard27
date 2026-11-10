@@ -20,6 +20,17 @@ class ContentSafetyTests(unittest.TestCase):
         self.assertTrue(callable(bot.cmd_profilim))
         self.assertTrue(callable(bot.cmd_profil))
         self.assertTrue(callable(bot.cmd_profil_temizle))
+        self.assertTrue(callable(bot.cmd_karne))
+        self.assertTrue(callable(bot.cmd_hesapla))
+        self.assertTrue(callable(bot.cmd_eyalet))
+        self.assertTrue(callable(bot.cmd_case))
+        self.assertTrue(callable(bot.cmd_vize_rotalari))
+        self.assertTrue(callable(bot.cmd_sozluk))
+        self.assertTrue(callable(bot.cmd_mahkeme))
+        self.assertTrue(callable(bot.cmd_surec))
+        self.assertTrue(callable(bot.cmd_dosya_tasima))
+        self.assertTrue(callable(bot.cmd_vize_analiz))
+        self.assertTrue(callable(bot.cmd_haber_analiz))
 
     def test_daily_digest_is_actionable(self):
         sample = {"checklist": {}, "ds260": {}}

@@ -66,6 +66,31 @@ class WebResearchTests(unittest.TestCase):
         self.assertEqual(result.sources[0].official, True)
         self.assertIn("travel.state.gov", web.source_links(result))
 
+    def test_enrich_news_insight_court_stay(self):
+        summary, impact = web.enrich_news_insight(
+            "Ninth Circuit Issues Stay on District Court Order on DV-2027",
+            "Appeals court suspended reopening order pending litigation.",
+            "Legal Publisher"
+        )
+        self.assertIn("Federal Temyiz Mahkemesi", summary)
+        self.assertIn("Stay of Order", summary)
+        self.assertIn("Portalin açılışı", impact)
+
+    def test_enrich_news_insight_transfer(self):
+        summary, impact = web.enrich_news_insight(
+            "U.S. Embassy Ankara Case Transfer Residency Requirement",
+            "KCC clarifies residency rules for third-country immigrant visa transfers.",
+            "Visa News"
+        )
+        self.assertIn("dosya taşıma", summary)
+        self.assertIn("oturum", impact)
+
+    def test_transfer_and_visa_query_routing(self):
+        q1 = web.build_query("Ankara'dan başka ülkeye dosya taşıma", False)
+        self.assertIn("transfer", q1)
+        q2 = web.build_query("B1/B2 randevu ve 214b şartları", False)
+        self.assertIn("B1 B2", q2)
+
 
 if __name__ == "__main__":
     unittest.main()
