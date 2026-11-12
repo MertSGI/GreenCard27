@@ -35,6 +35,16 @@ class WebhookTests(unittest.TestCase):
         state.ready = True
         self.assertEqual(state.health_payload()["status"], "ok")
 
+    def test_get_health_data_enrichment(self):
+        import asyncio
+        state = BotWebhookRuntime(FakeApp(), "1:example", "https://example.onrender.com")
+        state.ready = True
+        data = asyncio.run(state.get_health_data())
+        self.assertEqual(data["status"], "ok")
+        self.assertIn("database", data)
+        self.assertIn("gemini", data)
+        self.assertIn("telegram_webhook", data)
+
 
 if __name__ == "__main__":
     unittest.main()

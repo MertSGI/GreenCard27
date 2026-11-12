@@ -1075,9 +1075,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     get_user_profile(state, chat_id)
 
     ai_badge = (
-        f"🟢 Sınırsız AI Koç Aktif ({active_model()})"
+        f"🟢 Sınırsız AI Koç Aktif ({active_model() or 'Hazır'})"
         if (HAS_GENAI and GEMINI_API_KEY)
-        else "🟡 GEMINI_API_KEY Bekleniyor (/ai_durum)"
+        else "🟡 `GEMINI_API_KEY` Bekleniyor (`/ai_durum`)"
     )
     welcome_text = (
         "🇺🇸 *Sınırsız Kişisel Koçunuz & 360° Green Card Danışmanınıza Hoş Geldiniz!*\n\n"
@@ -1099,9 +1099,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "• 📸 *Fotoğraf & Pasaport Testi:* `/fotograf` (600x600 px, sRGB, arka plan aydınlığı ve JPEG denetimi).\n\n"
         "👇 *Menüden bir işlem seçebilir veya aklına gelen her şeyi doğrudan bir dosta danışır gibi yazabilirsin:*"
     )
-    await update.message.reply_text(
+    await safe_reply_or_edit(
+        update,
         welcome_text,
-        parse_mode=ParseMode.MARKDOWN,
         reply_markup=build_main_menu_keyboard(),
     )
 
@@ -1260,14 +1260,14 @@ async def cmd_case(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     args = context.args or []
     case_val = args[0] if args else facts.get("case_number", "")
     if not case_val:
-        await update.message.reply_text(
+        await safe_reply_or_edit(
+            update,
             "🔢 *DV Case Number, Olası Senaryolar & Hazır KCC Maili*\n\n"
             "Case numaranızı girdiğinizde senin yerine olası senaryoları (Normal ilerleme, Ankara yoğunluğu, 30 Eylül dar takvim) kurar, "
             "hemen alacağımız aksiyonları belirler ve *KCC'ye gönderebileceğimiz hazır İngilizce mail taslağını ('Onlara şu şekilde söyleyelim')* üretirim:\n\n"
             "Kullanım: `/case <numara>`\n"
             "Örnek: `/case 2027EU00028500` veya `/case EU28500` veya `/case 2027AS3500`\n\n"
-            "_(Bu numara profilinize otomatik kaydedilir ve tüm stratejileriniz buna göre planlanır)_",
-            parse_mode=ParseMode.MARKDOWN,
+            "*(Bu numara profilinize otomatik kaydedilir ve tüm stratejileriniz buna göre planlanır)*",
             reply_markup=build_case_actions_keyboard(),
         )
         return
@@ -2091,18 +2091,25 @@ async def periodic_monitor_job(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def on_bot_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     err = context.error
+    err_info = {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "error_type": type(err).__name__,
+        "error_message": str(err),
+        "update_id": getattr(update, "update_id", None) if isinstance(update, Update) else None,
+    }
+    setattr(context.application, "_last_handler_error", err_info)
     if isinstance(err, Conflict):
         logger.warning("Telegram 409 Conflict: Başka bir polling veya webhook aktif.")
     else:
-        logger.error("Telegram hata: %s", type(err).__name__)
+        logger.error("Telegram işleyici hatası: %s - %s", type(err).__name__, err, exc_info=True)
         if isinstance(update, Update) and update.effective_chat:
             try:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
                     text="⚠️ Bir işlem hatası oluştu. /start ile yeniden deneyebilirsiniz."
                 )
-            except Exception:
-                pass
+            except Exception as send_err:
+                logger.warning("Hata bildirim mesajı iletilemedi: %s", send_err)
 
 
 # ============================================================================
